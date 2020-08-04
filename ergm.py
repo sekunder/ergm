@@ -9,6 +9,8 @@ Classes:
 import numpy as np
 import math
 
+from util import index_to_edge
+
 
 class ergm:
     def __init__(self, stats, params=None, directed=False):
@@ -64,13 +66,13 @@ class ergm:
         """
         return self.logweight(adj)
 
-    def sample_gibbs(self, n_nodes, n_samples=1, burnin=100, n_steps=500, g0=None):
+    def sample_gibbs(self, n_nodes, n_samples=1, burn_in=None, n_steps=None, g0=None):
         """
         Sample from this ensemble, returning a 3d numpy array which is `n_nodes` x `n_nodes` x `n_samples`.
 
         :param n_nodes: Number of nodes in the graph
         :param n_samples: Number of samples to return
-        :param burnin: Number of burn-in steps
+        :param burn_in: Number of burn-in steps
         :param n_steps:
         :param g0:
         :return: A numpy array of integers
@@ -78,7 +80,32 @@ class ergm:
         This method uses Gibbs sampling.
         TODO write up some details on the internals of this method
         """
-        pass
+        if g0 is None:
+            adj = np.zeros((n_nodes, n_nodes))
+        else:
+            adj = g0
+
+        if burn_in is None:
+            burn_in = 10 * n_nodes
+        if n_steps is None:
+            n_steps = 10 * n_nodes
+
+        samples = np.zeros((n_nodes, n_nodes, n_samples), dtype=int)
+        total_steps = burn_in + n_steps * n_samples
+        urand = np.random.rand(total_steps)
+        # idx_sequence = np.random.choice(range(n_nodes * (n_nodes - 1) // (1 + (not self.directed))),
+        #                                 size=total_steps)
+        edge_sequence = index_to_edge(np.random.choice(range(n_nodes * (n_nodes - 1) // (1 + (not self.directed))),
+                                        size=total_steps), n_nodes, self.directed)
+
+        for step in range(total_steps):
+            p_flip = 1 / (1 + self.weight(self.current_adj))  # TODO double check this
+            if urand[step] < p_flip:
+                self.current_adj[edge_sequence[0,step], edge_sequence[1,step]] = ~self.current_adj[edge_sequence[0,step], edge_sequence[1,step]]
+            if step >= burn_in and (step - burn_in) % n_steps == 0:
+                samples[:, :, (step - burn_in) // n_steps] = adj[:, :]
+
+        return samples
 
     def biased_loglikelihood(self, samples):
         """
