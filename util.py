@@ -3,6 +3,7 @@ utility functions for ergm
 """
 import numpy as np
 
+
 def index_to_edge(idx, n, directed=True, order="columns"):
     """
     Returns the ordered pair `(e0,e1)` for the edge which has linear index `idx`. This is essentially the linear
