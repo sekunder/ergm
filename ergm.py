@@ -40,8 +40,6 @@ class ergm:
         # backend for sampling
         self.current_adj = np.zeros(0)  # when sampling, keep the current state of the MCMC
 
-
-
     def weight(self, adj):
         """
         Compute the weight of adjacency matrix `adj`. This is the unnormalized probability of `adj` under the ergm.
@@ -73,17 +71,17 @@ class ergm:
         :param n_nodes: Number of nodes in the graph
         :param n_samples: Number of samples to return
         :param burn_in: Number of burn-in steps
-        :param n_steps:
-        :param g0:
+        :param n_steps: Number of steps between samples
+        :param g0: Initial adjacency matrix to use. If `sample_gibbs` has been called before with the same `n_nodes`, this defaults to the
         :return: A numpy array of integers
 
         This method uses Gibbs sampling.
         TODO write up some details on the internals of this method
         """
         if g0 is None:
-            adj = np.zeros((n_nodes, n_nodes))
+            self.current_adj = np.zeros((n_nodes, n_nodes))
         else:
-            adj = g0
+            self.current_adj = g0
 
         if burn_in is None:
             burn_in = 10 * n_nodes
@@ -96,14 +94,16 @@ class ergm:
         # idx_sequence = np.random.choice(range(n_nodes * (n_nodes - 1) // (1 + (not self.directed))),
         #                                 size=total_steps)
         edge_sequence = index_to_edge(np.random.choice(range(n_nodes * (n_nodes - 1) // (1 + (not self.directed))),
-                                        size=total_steps), n_nodes, self.directed)
+                                                       size=total_steps),
+                                      n_nodes, self.directed)
 
         for step in range(total_steps):
             p_flip = 1 / (1 + self.weight(self.current_adj))  # TODO double check this
             if urand[step] < p_flip:
-                self.current_adj[edge_sequence[0,step], edge_sequence[1,step]] = ~self.current_adj[edge_sequence[0,step], edge_sequence[1,step]]
+                self.current_adj[edge_sequence[0, step], edge_sequence[1, step]] = ~self.current_adj[
+                    edge_sequence[0, step], edge_sequence[1, step]]
             if step >= burn_in and (step - burn_in) % n_steps == 0:
-                samples[:, :, (step - burn_in) // n_steps] = adj[:, :]
+                samples[:, :, (step - burn_in) // n_steps] = self.current_adj[:, :]
 
         return samples
 
@@ -116,3 +116,52 @@ class ergm:
         :return: a float
         """
         return np.mean([self.logweight(samples[:, :, s_idx]) for s_idx in range(samples.shape[2])])
+
+    def sampler_estimate_expected(self, n, fs=None, n_samples=None):
+        """
+        Estimates the expected value of $f(G)$ for each $f$ in `fs`, for graphs $G$ with `n` nodes. The estimate is
+        computed from `n_samples` (drawn with the gibbs sampler)
+
+        :param n: integer, number of nodes
+        :param fs: iterable of functions; default is statistics that define the ergm.
+        :param n_samples: integer, number of samples to use for estimation. Default is `n ** 2`
+
+        :return: numpy array of estimated expected values of each function
+        """
+        if fs is None:
+            fs = self.stats
+        if n_samples is None:
+            n_samples = n ** 2
+
+        samples = self.sample_gibbs(n, n_samples)  # TODO look up how to use kwargs to streamline all this
+        means = np.zeros(len(fs))
+        for i, f in enumerate(fs):
+            means[i] = np.mean([f(samples[:, :, s_idx]) for s_idx in range(n_samples)])
+
+    def ErdosRenyi_estimate_expected(self, n, fs=None, n_samples=None, q=None):
+        """
+        Estimate the expected value of $f(G)$ for each $f$ in `fs`, for graphs $G$ with `n` nodes. The estimate is
+        computed by first drawing a large sample of Erdos-Renyi random graphs, computing their statistics,
+        then taking the weighted average according to weights under the ergm.
+
+        :param n: integer, number of nodes
+        :param fs: iterable, list of functions; default is statistics that define the ergm
+        :param n_samples: integer, the number of ER graphs to generate.
+
+        :return: numpy array of expected values of each function
+        """
+        if fs is None:
+            fs = self.stats
+        if n_samples is None:
+            n_samples = n ** 2
+
+        ER_samples = np.random.binomial(2, q, size=(n, n, n_samples))
+        ER_samples[range(n), range(n), :] = 0  # clear the diagonals
+
+        # sample_weights = np.array([self.weight(ER_samples[:, :, s_idx]) for s_idx in range(n_samples)])
+        # sample_weights = sample_weights / sample_weights.sum()
+        sample_stats = np.array([[f(ER_samples[:, :, s_idx]) for s_idx in range(n_samples)] for f in fs])
+        sample_weights = np.exp((sample_stats * self.params).sum())  # TODO check sum axis and broadcast-ability
+        sample_weights = sample_weights / sample_weights.sum()
+
+        return (sample_weights * sample_stats).sum()
