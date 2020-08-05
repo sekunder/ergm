@@ -12,7 +12,7 @@ import math
 from util import index_to_edge
 
 
-class ergm:
+class ERGM:
     def __init__(self, stats, params=None, directed=False):
         """
         Construct an ergm with specified vector of statistics. In this ensemble,
@@ -117,7 +117,7 @@ class ergm:
         """
         return np.mean([self.logweight(samples[:, :, s_idx]) for s_idx in range(samples.shape[2])])
 
-    def sampler_estimate_expected(self, n, fs=None, n_samples=None):
+    def sampler_estimate_expected(self, n, fs=None, n_samples=None, **kwargs):
         """
         Estimates the expected value of $f(G)$ for each $f$ in `fs`, for graphs $G$ with `n` nodes. The estimate is
         computed from `n_samples` (drawn with the gibbs sampler)
@@ -133,12 +133,12 @@ class ergm:
         if n_samples is None:
             n_samples = n ** 2
 
-        samples = self.sample_gibbs(n, n_samples)  # TODO look up how to use kwargs to streamline all this
+        samples = self.sample_gibbs(n, n_samples, kwargs)  # TODO look up how to use kwargs to streamline all this
         means = np.zeros(len(fs))
         for i, f in enumerate(fs):
             means[i] = np.mean([f(samples[:, :, s_idx]) for s_idx in range(n_samples)])
 
-    def ErdosRenyi_estimate_expected(self, n, fs=None, n_samples=None, q=None):
+    def erdosrenyi_estimate_expected(self, n, fs=None, n_samples=None, q=None):
         """
         Estimate the expected value of $f(G)$ for each $f$ in `fs`, for graphs $G$ with `n` nodes. The estimate is
         computed by first drawing a large sample of Erdos-Renyi random graphs, computing their statistics,
@@ -147,6 +147,7 @@ class ergm:
         :param n: integer, number of nodes
         :param fs: iterable, list of functions; default is statistics that define the ergm
         :param n_samples: integer, the number of ER graphs to generate.
+        :param q: edge density of ER samples. Default attempts to match ergm's edge density
 
         :return: numpy array of expected values of each function
         """
@@ -154,13 +155,15 @@ class ergm:
             fs = self.stats
         if n_samples is None:
             n_samples = n ** 2
+        if q is None:
+            q = 0.1  # TODO find a way to approximate edge density in ergm
 
-        ER_samples = np.random.binomial(2, q, size=(n, n, n_samples))
-        ER_samples[range(n), range(n), :] = 0  # clear the diagonals
+        er_samples = np.random.binomial(2, q, size=(n, n, n_samples))
+        er_samples[range(n), range(n), :] = 0  # clear the diagonals
 
-        # sample_weights = np.array([self.weight(ER_samples[:, :, s_idx]) for s_idx in range(n_samples)])
-        # sample_weights = sample_weights / sample_weights.sum()
-        sample_stats = np.array([[f(ER_samples[:, :, s_idx]) for s_idx in range(n_samples)] for f in fs])
+        # below, we avoid computing each f twice, by performing a single call in sample_stats then using that to
+        # compute the corresponding weights
+        sample_stats = np.array([[f(er_samples[:, :, s_idx]) for s_idx in range(n_samples)] for f in fs])
         sample_weights = np.exp((sample_stats * self.params).sum())  # TODO check sum axis and broadcast-ability
         sample_weights = sample_weights / sample_weights.sum()
 
