@@ -17,7 +17,7 @@ class ERGM:
         """
         Construct an ergm with specified vector of statistics. In this ensemble,
 
-        $$ P(adj) = \frac{1}{Z} exp(\sum_a k_a(adj) \theta_a) $$
+        $$ P(G) = \frac{1}{Z} exp(\sum_a k_a(G) \theta_a) $$
 
         where the functions $k_a$ are specified in `stats`, the coefficients $\theta_a$ are specified by `params`.
 
@@ -39,6 +39,19 @@ class ERGM:
 
         # backend for sampling
         self.current_adj = np.zeros(0)  # when sampling, keep the current state of the MCMC
+        self.current_logweight = 0.0  # the logweight of the current adjacency matrix
+        self.proposed_logweight = 0.0
+        # self.last_evaluated = np.zeros(0)  # maybe will just be a hash; some way of caching computations
+
+    def eval_stats(self, adj):
+        """
+        Compute the statistics of this ergm on the given adjacency matrix.
+
+        :param adj: adjacency matrix
+        :return: numpy array, vector of length `len(self.stats)`
+        """
+        # TODO implement some hashing/caching to avoid repeated computations
+        return np.array([f(adj) for f in self.stats])
 
     def weight(self, adj):
         """
@@ -46,7 +59,7 @@ class ERGM:
         :param adj: Adjacency matrix of a graph
         :return: A float
         """
-        return math.exp(self.logweight((adj)))
+        return math.exp(self.logweight(adj))
 
     def logweight(self, adj):
         """
@@ -72,16 +85,20 @@ class ERGM:
         :param n_samples: Number of samples to return
         :param burn_in: Number of burn-in steps
         :param n_steps: Number of steps between samples
-        :param g0: Initial adjacency matrix to use. If `sample_gibbs` has been called before with the same `n_nodes`, this defaults to the
+        :param g0: Initial adjacency matrix to use. Default is previous internal state for sampler, if appropriate
         :return: A numpy array of integers
 
         This method uses Gibbs sampling.
-        TODO write up some details on the internals of this method
         """
-        if g0 is None:
+        # TODO write up some details on the internals of this method
+        if g0 is None and self.current_adj.shape[0] == n_nodes:
+            pass
+        elif g0 is None:
             self.current_adj = np.zeros((n_nodes, n_nodes))
+            self.current_logweight = self.logweight(self.current_adj)
         else:
             self.current_adj = g0
+            self.current_logweight = self.logweight(g0)
 
         if burn_in is None:
             burn_in = 10 * n_nodes
@@ -91,15 +108,21 @@ class ERGM:
         samples = np.zeros((n_nodes, n_nodes, n_samples), dtype=int)
         total_steps = burn_in + n_steps * n_samples
         urand = np.random.rand(total_steps)
-        # idx_sequence = np.random.choice(range(n_nodes * (n_nodes - 1) // (1 + (not self.directed))),
-        #                                 size=total_steps)
         edge_sequence = index_to_edge(np.random.choice(range(n_nodes * (n_nodes - 1) // (1 + (not self.directed))),
                                                        size=total_steps),
                                       n_nodes, self.directed)
 
         for step in range(total_steps):
-            p_flip = 1 / (1 + self.weight(self.current_adj))  # TODO double check this
+            # assuming the logweight of the current state is already computed, we just need to compute the new values
+            self.current_adj[edge_sequence[0, step], edge_sequence[1, step]] = ~self.current_adj[edge_sequence[0, step], edge_sequence[1, step]]
+            self.proposed_logweight = self.logweight(self.current_adj)
+            p_flip = 1 / (1 + math.exp(self.current_logweight - self.proposed_logweight))
+            # p_flip = 1 / (1 + self.weight(self.current_adj))  # wrong!
             if urand[step] < p_flip:
+                # keep the flip; save the logweight
+                self.current_logweight = self.proposed_logweight
+            else:
+                # flip the edge back
                 self.current_adj[edge_sequence[0, step], edge_sequence[1, step]] = ~self.current_adj[
                     edge_sequence[0, step], edge_sequence[1, step]]
             if step >= burn_in and (step - burn_in) % n_steps == 0:
@@ -133,7 +156,7 @@ class ERGM:
         if n_samples is None:
             n_samples = n ** 2
 
-        samples = self.sample_gibbs(n, n_samples, kwargs)  # TODO look up how to use kwargs to streamline all this
+        samples = self.sample_gibbs(n, n_samples, *kwargs)  # TODO look up how to use kwargs to streamline all this
         means = np.zeros(len(fs))
         for i, f in enumerate(fs):
             means[i] = np.mean([f(samples[:, :, s_idx]) for s_idx in range(n_samples)])
