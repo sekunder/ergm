@@ -1,6 +1,8 @@
 # ergm
 Python implementation of exponential random graph models
 
+**DISCLAIMER:** This package is still under development and woefully incomplete. I'd say "use at your own risk" but for now, it's really more like, "don't use." You have been warned! 
+
 ---
 
 An exponential random graph model (ergm) is a probability distribution over graphs specified by a set of
