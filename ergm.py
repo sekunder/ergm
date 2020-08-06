@@ -1,10 +1,8 @@
 """
-adj pure-python implementation of exponential random graph models (ERGMs). Adapted from https://github.com/jcatw/ergm
-
-Throughout this package, graphs are represented by their adjacency matrices, which are simply numpy arrays.
+a pure-python implementation of exponential random graph models (ERGMs). Adapted from https://github.com/jcatw/ergm
 
 Classes:
-    ergmpy
+    ergm: uses adjacency matrix representation for graphs
 """
 import numpy as np
 import math
@@ -90,7 +88,7 @@ class ERGM:
 
         This method uses Gibbs sampling.
         """
-        # TODO write up some details on the internals of this method
+        # TODO write up some details on the internals of this method in the docstring
         if g0 is None and self.current_adj.shape[0] == n_nodes:
             pass
         elif g0 is None:
