@@ -42,7 +42,7 @@ log_msg("Initial state:\n", g0)
 log_msg("Initial state has", np.sum(g0) // 2, "edges, expected value", m * p0)
 
 ergm_ER_start = time.time()
-fs = [lambda g : np.sum(g) / 2]  # undirected graph has symmetric adjacency matrix!
+fs = [lambda g: np.sum(g) / 2]  # undirected graph has symmetric adjacency matrix!
 ergm_ER_model = ERGM(fs, [np.log(p0 / (1 - p0))], directed=False)
 ergm_ER_samples = ergm_ER_model.sample_gibbs(n_nodes, n_samples, print_logs=sys.stdout)
 ergm_ER_end = time.time()
@@ -55,7 +55,6 @@ log_msg("Produced", len(ergm_ER_list), "samples")
 
 log_msg("Comparing distributions of edge counts:")
 
-
 theory_edge_distro = np.array([binom(m, k) * (p0 ** k) * ((1 - p0) ** (m - k)) for k in range(m + 2)])
 nx_edge_distro, _ = np.histogram([nx.number_of_edges(G) for G in nx_ER_list], bins=range(m + 2))
 ergm_edge_distro, _ = np.histogram([nx.number_of_edges(G) for G in ergm_ER_list], bins=range(m + 2))
@@ -66,10 +65,13 @@ ergm_edge_distro = ergm_edge_distro / n_samples
 log_msg("{:>2} {:20} {:20} {:20}".format("m", "nx prob.", "ergm prob.", "theory prob."))
 for degree in range(m + 1):
     # print(f"{degree:2d} {nx_edge_distro[degree]:20.14f} {ergm_edge_distro[degree]:20.14f} {theory_edge_distro[degree]:20.14f}")
-    log_msg("%2d %20.14f %20.14f %20.14f" % (degree, nx_edge_distro[degree], ergm_edge_distro[degree], theory_edge_distro[degree]))
+    log_msg("%2d %20.14f %20.14f %20.14f" % (
+    degree, nx_edge_distro[degree], ergm_edge_distro[degree], theory_edge_distro[degree]))
 
 nx_positive_prob = np.where(nx_edge_distro > 0)
 ergm_positive_prob = np.where(ergm_edge_distro > 0)
 
-log_msg("KL Divergence between networkx and true distribution:", np.sum(nx_edge_distro[nx_positive_prob] * np.log(nx_edge_distro[nx_positive_prob] / theory_edge_distro[nx_positive_prob])))
-log_msg("KL Divergence between ergm and true distribution:    ", np.sum(ergm_edge_distro[ergm_positive_prob] * np.log(ergm_edge_distro[ergm_positive_prob] / theory_edge_distro[ergm_positive_prob])))
+log_msg("KL Divergence between networkx and true distribution:", np.sum(
+    nx_edge_distro[nx_positive_prob] * np.log(nx_edge_distro[nx_positive_prob] / theory_edge_distro[nx_positive_prob])))
+log_msg("KL Divergence between ergm and true distribution:    ", np.sum(ergm_edge_distro[ergm_positive_prob] * np.log(
+    ergm_edge_distro[ergm_positive_prob] / theory_edge_distro[ergm_positive_prob])))
