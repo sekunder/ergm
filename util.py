@@ -2,7 +2,14 @@
 utility functions for ergm
 """
 import numpy as np
+import datetime
+import sys
 
+
+def log_msg(*args, out=sys.stdout, **kwargs):
+    """Print message m with a timestamp if out is not None."""
+    if out:
+        print(datetime.datetime.now().strftime("%Y %m %d %H:%M:%S "), *args, *kwargs, file=out)
 
 def index_to_edge(idx, n, directed=True, order="columns"):
     """
@@ -23,7 +30,7 @@ def index_to_edge(idx, n, directed=True, order="columns"):
         e1 = idx // (n - 1)
         e0 = idx % (n - 1) + (idx % (n - 1) >= e1)
     else:
-        e1 = int(np.ceil(triangular_root(idx + 1)))
+        e1 = np.ceil(triangular_root(idx + 1)).astype(int)
         e0 = idx - (e1 - 1) * e1 // 2
 
     if order == "columns":

@@ -7,7 +7,7 @@ Classes:
 import numpy as np
 import math
 
-from util import index_to_edge
+from util import index_to_edge, log_msg
 
 
 class ERGM:
@@ -75,7 +75,7 @@ class ERGM:
         """
         return self.logweight(adj)
 
-    def sample_gibbs(self, n_nodes, n_samples=1, burn_in=None, n_steps=None, g0=None):
+    def sample_gibbs(self, n_nodes, n_samples=1, burn_in=None, n_steps=None, g0=None, print_logs=None):
         """
         Sample from this ensemble, returning a 3d numpy array which is `n_nodes` x `n_nodes` x `n_samples`.
 
@@ -84,24 +84,31 @@ class ERGM:
         :param burn_in: Number of burn-in steps
         :param n_steps: Number of steps between samples
         :param g0: Initial adjacency matrix to use. Default is previous internal state for sampler, if appropriate
+        :param print_logs: where to print logs. Default is None, suppressing output
         :return: A numpy array of integers
 
         This method uses Gibbs sampling.
         """
         # TODO write up some details on the internals of this method in the docstring
         if g0 is None and self.current_adj.shape[0] == n_nodes:
+            log_msg("sample_gibbs: previous adjacency matrix found", out=print_logs)
             pass
         elif g0 is None:
+            log_msg("sample_gibbs: using empty graph for initial state", out=print_logs)
             self.current_adj = np.zeros((n_nodes, n_nodes))
             self.current_logweight = self.logweight(self.current_adj)
         else:
+            log_msg("sample_gibbs: using provided adjacency matrix for initial state", out=print_logs)
             self.current_adj = g0
             self.current_logweight = self.logweight(g0)
 
         if burn_in is None:
-            burn_in = 10 * n_nodes
+            burn_in = 10 * (n_nodes ** 2) // 2
         if n_steps is None:
-            n_steps = 10 * n_nodes
+            n_steps = 10 * (n_nodes ** 2) // 2
+
+        log_msg("sample_gibbs: %8d burn-in steps" % burn_in, out=print_logs)
+        log_msg("sample_gibbs: %8d steps between samples" % n_steps, out=print_logs)
 
         samples = np.zeros((n_nodes, n_nodes, n_samples), dtype=int)
         total_steps = burn_in + n_steps * n_samples
@@ -110,9 +117,11 @@ class ERGM:
                                                        size=total_steps),
                                       n_nodes, self.directed)
 
+        log_msg("sample_gibbs: beginning MCMC process", out=print_logs)
         for step in range(total_steps):
             # assuming the logweight of the current state is already computed, we just need to compute the new values
-            self.current_adj[edge_sequence[0, step], edge_sequence[1, step]] = ~self.current_adj[edge_sequence[0, step], edge_sequence[1, step]]
+            # self.current_adj[edge_sequence[0, step], edge_sequence[1, step]] = ~self.current_adj[edge_sequence[0, step], edge_sequence[1, step]]
+            self.toggle_current_edge(edge_sequence[0, step], edge_sequence[1, step])
             self.proposed_logweight = self.logweight(self.current_adj)
             p_flip = 1 / (1 + math.exp(self.current_logweight - self.proposed_logweight))
             # p_flip = 1 / (1 + self.weight(self.current_adj))  # wrong!
@@ -121,12 +130,29 @@ class ERGM:
                 self.current_logweight = self.proposed_logweight
             else:
                 # flip the edge back
-                self.current_adj[edge_sequence[0, step], edge_sequence[1, step]] = ~self.current_adj[
-                    edge_sequence[0, step], edge_sequence[1, step]]
+                # self.current_adj[edge_sequence[0, step], edge_sequence[1, step]] = ~self.current_adj[
+                #     edge_sequence[0, step], edge_sequence[1, step]]
+                self.toggle_current_edge(edge_sequence[0, step], edge_sequence[1, step])
             if step >= burn_in and (step - burn_in) % n_steps == 0:
-                samples[:, :, (step - burn_in) // n_steps] = self.current_adj[:, :]
+                sample_num = (step - burn_in) // n_steps
+                if print_logs is not None and sample_num % (n_samples // 10) == 0:
+                    log_msg("sample_gibbs: emitting sample %8d / %8d" % (sample_num, n_samples), out=print_logs)
+                samples[:, :, sample_num] = self.current_adj[:, :]
 
         return samples
+
+    def toggle_current_edge(self, u, v):
+        """
+        Toggle edge (u,v) in the current adjacency matrix underlying the MCMC sampler
+
+        :param u: first vertex
+        :param v: second vertex
+        :return: None
+        """
+        # currently assuming a binary adjacency matrix; this may change in the future
+        self.current_adj[u, v] = 1 - self.current_adj[u, v]
+        if not self.directed:
+            self.current_adj[v, u] = 1 - self.current_adj[v, u]
 
     def biased_loglikelihood(self, samples):
         """
@@ -154,7 +180,7 @@ class ERGM:
         if n_samples is None:
             n_samples = n ** 2
 
-        samples = self.sample_gibbs(n, n_samples, *kwargs)  # TODO look up how to use kwargs to streamline all this
+        samples = self.sample_gibbs(n, n_samples, *kwargs)
         means = np.zeros(len(fs))
         for i, f in enumerate(fs):
             means[i] = np.mean([f(samples[:, :, s_idx]) for s_idx in range(n_samples)])
@@ -179,7 +205,8 @@ class ERGM:
         if q is None:
             q = 0.1  # TODO find a way to approximate edge density in ergm
 
-        er_samples = np.random.binomial(2, q, size=(n, n, n_samples))
+        # er_samples = np.random.binomial(1, q, size=(n, n, n_samples))
+        er_samples = (np.random.rand(n, n, n_samples) < q).astype(int)
         er_samples[range(n), range(n), :] = 0  # clear the diagonals
 
         # below, we avoid computing each f twice, by performing a single call in sample_stats then using that to
