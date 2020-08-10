@@ -19,16 +19,16 @@ class ERGM:
 
         where the functions $k_a$ are specified in `stats`, the coefficients $\theta_a$ are specified by `params`.
 
-        :param stats: a list of functions which take numpy matrices as arguments and return numerical values
-        :param params: a list of numerical values, or None to use default values of 0 for all coefficients.
+        :param stats: a function which takes a graph as an argument and returns a vector of statistics
+        :param params: a vector of numerical values, or None to use default values of 0 for all coefficients.
         :param directed: Boolean, whether graphs in this ensemble are directed
         """
         self.stats = stats
         if params is None:
             self.params = np.zeros(len(stats))
         else:
-            assert len(params) == len(stats)
-            self.params = params
+            # assert len(params) == len(stats)
+            self.params = np.array(params)
         self.directed = directed
 
         # some extra bits and bobs
@@ -49,7 +49,8 @@ class ERGM:
         :return: numpy array, vector of length `len(self.stats)`
         """
         # TODO implement some hashing/caching to avoid repeated computations
-        return np.array([f(adj) for f in self.stats])
+        # return np.array([f(adj) for f in self.stats])
+        return self.stats(adj)
 
     def weight(self, adj):
         """
@@ -65,7 +66,8 @@ class ERGM:
         :param adj: Adjacency matrix of a graph
         :return: a float
         """
-        return np.sum([theta * k(adj) for theta, k in zip(self.params, self.stats)])
+        # return np.sum([theta * k(adj) for theta, k in zip(self.params, self.stats)])
+        return np.dot(self.stats(adj), self.params)
 
     def hamiltonian(self, adj):
         """
@@ -164,42 +166,44 @@ class ERGM:
         """
         return np.mean([self.logweight(samples[:, :, s_idx]) for s_idx in range(samples.shape[2])])
 
-    def sampler_estimate_expected(self, n, fs=None, n_samples=None, **kwargs):
+    def sampler_estimate_expected(self, n, f_vec=None, n_samples=None, **kwargs):
         """
-        Estimates the expected value of $f(G)$ for each $f$ in `fs`, for graphs $G$ with `n` nodes. The estimate is
-        computed from `n_samples` (drawn with the gibbs sampler)
+        Estimates the expected value of $f(G)$, where $f$ is a vector-valued function of graphs, for graphs $G$ with
+        `n` nodes. The estimate is computed from `n_samples` (drawn with the gibbs sampler)
 
         :param n: integer, number of nodes
-        :param fs: iterable of functions; default is statistics that define the ergm.
+        :param f_vec: function which takes a graph and returns a vector. default is statistics that define the ergm.
         :param n_samples: integer, number of samples to use for estimation. Default is `n ** 2`
 
         :return: numpy array of estimated expected values of each function
         """
-        if fs is None:
-            fs = self.stats
+        if f_vec is None:
+            f_vec = self.stats
         if n_samples is None:
             n_samples = n ** 2
 
         samples = self.sample_gibbs(n, n_samples, *kwargs)
-        means = np.zeros(len(fs))
-        for i, f in enumerate(fs):
-            means[i] = np.mean([f(samples[:, :, s_idx]) for s_idx in range(n_samples)])
+        return np.array([f_vec(samples[:, :, i] for i in range(n_samples))]).mean(axis=0)
+        # means = np.zeros(len(f_vec))
+        # for i, f in enumerate(f_vec):
+        #     means[i] = np.mean([f(samples[:, :, s_idx]) for s_idx in range(n_samples)])
 
-    def erdosrenyi_estimate_expected(self, n, fs=None, n_samples=None, q=None):
+    def importance_estimate_expected(self, n, f_vec=None, n_samples=None, q=None):
         """
-        Estimate the expected value of $f(G)$ for each $f$ in `fs`, for graphs $G$ with `n` nodes. The estimate is
+        Estimate the expected value of $f(G)$ for each $f$ in `f_vec`, for graphs $G$ with `n` nodes. The estimate is
         computed by first drawing a large sample of Erdos-Renyi random graphs, computing their statistics,
         then taking the weighted average according to weights under the ergm.
 
         :param n: integer, number of nodes
-        :param fs: iterable, list of functions; default is statistics that define the ergm
+        :param f_vec: iterable, list of functions; default is statistics that define the ergm
         :param n_samples: integer, the number of ER graphs to generate.
         :param q: edge density of ER samples. Default attempts to match ergm's edge density
 
         :return: numpy array of expected values of each function
         """
-        if fs is None:
-            fs = self.stats
+        # TODO implement this correctly, currently it is (at least) missing a correction factor for the ER distribution
+        if f_vec is None:
+            f_vec = self.stats
         if n_samples is None:
             n_samples = n ** 2
         if q is None:
@@ -211,7 +215,8 @@ class ERGM:
 
         # below, we avoid computing each f twice, by performing a single call in sample_stats then using that to
         # compute the corresponding weights
-        sample_stats = np.array([[f(er_samples[:, :, s_idx]) for s_idx in range(n_samples)] for f in fs])
+        # sample_stats = np.array([[f(er_samples[:, :, s_idx]) for s_idx in range(n_samples)] for f in f_vec])
+        sample_stats = np.array([f_vec(er_samples[:, :, s_idx] for s_idx in range(n_samples))])
         sample_weights = np.exp((sample_stats * self.params).sum())  # TODO check sum axis and broadcast-ability
         sample_weights = sample_weights / sample_weights.sum()
 
