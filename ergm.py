@@ -114,7 +114,7 @@ class ERGM:
         total_steps = burn_in + n_steps * n_samples
         urand = np.random.rand(total_steps)
         edge_sequence = index_to_edge(np.random.choice(range(n_nodes * (n_nodes - 1) // (1 + (not self.directed))),
-                                                       size=total_steps),
+                                                       size=total_steps, replace=True),
                                       n_nodes, self.directed)
 
         log_msg("sample_gibbs: beginning MCMC process", out=print_logs)
