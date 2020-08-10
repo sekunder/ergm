@@ -11,7 +11,7 @@ from util import index_to_edge, log_msg
 
 
 class ERGM:
-    def __init__(self, stats, params=None, directed=False):
+    def __init__(self, stats, params, directed=False):
         """
         Construct an ergm with specified vector of statistics. In this ensemble,
 
@@ -24,16 +24,12 @@ class ERGM:
         :param directed: Boolean, whether graphs in this ensemble are directed
         """
         self.stats = stats
-        if params is None:
-            self.params = np.zeros(len(stats))
-        else:
-            # assert len(params) == len(stats)
-            self.params = np.array(params)
+        self.params = np.array(params)
         self.directed = directed
 
         # some extra bits and bobs
-        self.expected_stats = np.zeros(len(stats))
-        self.expected_other = {}  # for storing expected values of other stats
+        # self.expected_stats = np.zeros(len(stats))
+        # self.expected_other = {}  # for storing expected values of other stats
 
         # backend for sampling
         self.current_adj = np.zeros(0)  # when sampling, keep the current state of the MCMC
