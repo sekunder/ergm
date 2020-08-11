@@ -17,7 +17,7 @@ class ERGM:
 
         $$ P(G) = \frac{1}{Z} exp(\sum_a k_a(G) \theta_a) $$
 
-        where the functions $k_a$ are specified in `stats`, the coefficients $\theta_a$ are specified by `params`.
+        where the functions $k_a$ are the components of `stats`, the coefficients $\theta_a$ are specified by `params`.
 
         :param stats: a function which takes a graph as an argument and returns a vector of statistics
         :param params: a vector of numerical values, or None to use default values of 0 for all coefficients.
@@ -90,6 +90,7 @@ class ERGM:
         # TODO write up some details on the internals of this method in the docstring
         if g0 is None and self.current_adj.shape[0] == n_nodes:
             log_msg("sample_gibbs: previous adjacency matrix found", out=print_logs)
+            burn_in = 0  # we're picking up where we left off
             pass
         elif g0 is None:
             log_msg("sample_gibbs: using empty graph for initial state", out=print_logs)
@@ -180,9 +181,6 @@ class ERGM:
 
         samples = self.sample_gibbs(n, n_samples, *kwargs)
         return np.array([f_vec(samples[:, :, i] for i in range(n_samples))]).mean(axis=0)
-        # means = np.zeros(len(f_vec))
-        # for i, f in enumerate(f_vec):
-        #     means[i] = np.mean([f(samples[:, :, s_idx]) for s_idx in range(n_samples)])
 
     def importance_estimate_expected(self, n, f_vec=None, n_samples=None, q=None):
         """
