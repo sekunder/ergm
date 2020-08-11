@@ -11,7 +11,7 @@ from ergm import ERGM
 from util import log_msg
 from scipy.special import binom
 
-log_msg("BEGIN SCRIPT:", __name__)
+log_msg("BEGIN SCRIPT:", __file__)
 log_msg("Testing ergms with adjacency matrices")
 
 p0 = 0.1  # edge density for ER graph
@@ -129,4 +129,4 @@ ergm_further_samples = ergm_ER_model.sample_gibbs(n_large, n_further, print_logs
 avg_edges = ergm_further_samples.sum() / (2 * n_further)
 log_msg("Produced", n_further, "samples, with ", avg_edges, "average # edges")
 
-log_msg("END SCRIPT:", __name__)
+log_msg("END SCRIPT:", __file__)
