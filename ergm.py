@@ -120,7 +120,7 @@ class ERGM:
         for step in range(total_steps):
             # assuming the logweight of the current state is already computed, we just need to compute the new values
             # self.current_adj[edge_sequence[0, step], edge_sequence[1, step]] = ~self.current_adj[edge_sequence[0, step], edge_sequence[1, step]]
-            self.toggle_current_edge(edge_sequence[0, step], edge_sequence[1, step])
+            self._toggle_current_edge(edge_sequence[0, step], edge_sequence[1, step])
             self.proposed_logweight = self.logweight(self.current_adj)
             p_flip = 1 / (1 + math.exp(self.current_logweight - self.proposed_logweight))
             # p_flip = 1 / (1 + self.weight(self.current_adj))  # wrong!
@@ -131,7 +131,7 @@ class ERGM:
                 # flip the edge back
                 # self.current_adj[edge_sequence[0, step], edge_sequence[1, step]] = ~self.current_adj[
                 #     edge_sequence[0, step], edge_sequence[1, step]]
-                self.toggle_current_edge(edge_sequence[0, step], edge_sequence[1, step])
+                self._toggle_current_edge(edge_sequence[0, step], edge_sequence[1, step])
             if step >= burn_in and (step - burn_in) % n_steps == 0:
                 sample_num = (step - burn_in) // n_steps
                 if print_logs is not None and sample_num % (n_samples // 10) == 0:
@@ -140,7 +140,7 @@ class ERGM:
 
         return samples
 
-    def toggle_current_edge(self, u, v):
+    def _toggle_current_edge(self, u, v):
         """
         Toggle edge (u,v) in the current adjacency matrix underlying the MCMC sampler
 
