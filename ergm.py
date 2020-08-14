@@ -192,7 +192,7 @@ class ERGM:
         if n_samples is None:
             n_samples = n ** 2
 
-        samples = self.sample_gibbs(n, n_samples, *kwargs)
+        samples, _ = self.sample_gibbs(n, n_samples, *kwargs)
         return np.array([f_vec(samples[:, :, i] for i in range(n_samples))]).mean(axis=0)
 
     def importance_estimate_expected(self, n, f_vec=None, n_samples=None, q=None):
@@ -228,3 +228,52 @@ class ERGM:
         sample_weights = sample_weights / sample_weights.sum()
 
         return (sample_weights * sample_stats).sum()
+
+    def parameter_estimation(self, observed, **kwargs):
+        """
+        Estimate parameters for the given data. Currently only supports one method, maximum likelihood estimation via sampler.
+
+        :param observed: Data to fit to. Numpy array, either n_nodes x n_nodes or n_nodes x n_nodes x n_samples
+        :param kwargs:
+        """
+        # currently just a wrapper for _MLE_sampler
+        self._MLE_sampler(observed, *kwargs)
+
+    def _MLE_sampler(self, observed, n_estim_samples=1000, alpha=0.01, max_iter=1000, L_tol=1e-8, **kwargs):
+        """
+        Compute the maximum likelihood estimate (MLE) of parameters for the observed data using gradient ascent on
+        the likelihood. The expected value of the current ERGM is estimated by sampling.
+
+        :param observed:
+        :param n_sample:
+        :param alpha:
+        :param max_iter:
+        :return:
+        """
+        if len(observed.shape) == 2:
+            k_obs = self.stats(observed)
+        else:
+            k_obs = np.array([self.stats(observed[:, :, i]) for i in range(observed.shape[2])]).mean(axis=0)
+
+        n_nodes = observed.shape[0]
+        iteration = 0
+        estim_samples, estim_stats = self.sample_gibbs(n_nodes, n_estim_samples, *kwargs)
+        # Ek = np.array([self.stats(estim_samples[:,:,i]) for i in range(n_estim_samples)]).mean(axis=0)
+        Ek = estim_stats.mean(axis=0)
+        while np.dot(Ek - k_obs, Ek - k_obs) > L_tol and iteration < max_iter:
+            estim_samples, estim_stats = self.sample_gibbs(n_nodes, n_estim_samples, *kwargs)
+            # Ek = np.array([self.stats(estim_samples[:, :, i]) for i in range(n_estim_samples)]).mean(axis=0)
+            Ek = estim_samples.mean(axis=0)
+            self._set_theta(self.theta + alpha * (k_obs - Ek))
+
+    def _set_theta(self, theta_new, compute_new=False):
+        """
+        Change the parameters theta of the ERGM. If compute_new is True, evaluates the statistics of the current
+        state of the MC and updates its logweight.
+
+        :param theta_new: new value for parameters
+        :param compute_new: if true, compute logweight of the current MC state
+        """
+        self.theta = theta_new
+        if compute_new:
+            self.current_logweight = self.logweight(self.current_adj)
