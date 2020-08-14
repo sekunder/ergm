@@ -46,7 +46,7 @@ ergm_ER_start = time.time()
 # fs = [lambda g: np.sum(g) / 2]  # undirected graph has symmetric adjacency matrix!
 # fs = lambda g: np.array([np.sum(g) / 2])
 ergm_ER_model = ERGM(lambda g: np.array([np.sum(g) / 2]), [np.log(p0 / (1 - p0))], directed=False)
-ergm_ER_samples = ergm_ER_model.sample_gibbs(n_nodes, n_samples, print_logs=sys.stdout, g0=g0)
+ergm_ER_samples, ergm_ER_stats = ergm_ER_model.sample_gibbs(n_nodes, n_samples, print_logs=sys.stdout, g0=g0)
 ergm_ER_end = time.time()
 
 log_msg("Elapsed time:", ergm_ER_end - ergm_ER_start, "s")
@@ -54,6 +54,8 @@ log_msg("Elapsed time:", ergm_ER_end - ergm_ER_start, "s")
 ergm_ER_list = [nx.from_numpy_array(ergm_ER_samples[:, :, i]) for i in range(ergm_ER_samples.shape[2])]
 
 log_msg("Produced", len(ergm_ER_list), "samples")
+log_msg("Also produced a vector of statistics (first five elements shown here):", ergm_ER_stats[:5])
+log_msg("Mean number of edges:", ergm_ER_stats.mean())
 
 log_msg("Comparing distributions of edge counts:")
 
@@ -104,7 +106,7 @@ log_msg("Initial state has", np.sum(g0) // 2, "edges, expected value", m_large *
 ergm_ER_large_start = time.time()
 # fs = [lambda g: np.sum(g) / 2]  # undirected graph has symmetric adjacency matrix!
 # ergm_ER_large_model = ERGM(lambda g: np.array([np.sum(g) / 2]), [np.log(p0 / (1 - p0))], directed=False)
-ergm_ER_large_samples = ergm_ER_model.sample_gibbs(n_large, n_samples, print_logs=sys.stdout, burn_in=200, n_steps=200,
+ergm_ER_large_samples, _ = ergm_ER_model.sample_gibbs(n_large, n_samples, print_logs=sys.stdout, burn_in=200, n_steps=200,
                                                    g0=g0)
 ergm_ER_large_end = time.time()
 
@@ -125,7 +127,7 @@ log_msg("{:10.2f}{:10.2f}{:10.2f}".format(nx_ER_large_avg, ergm_ER_large_avg, th
 
 log_msg("Further sampling from ergm with", n_large, "nodes should skip burn-in phase")
 n_further = 1000
-ergm_further_samples = ergm_ER_model.sample_gibbs(n_large, n_further, print_logs=sys.stdout, burn_in=200, n_steps=200)
+ergm_further_samples, _ = ergm_ER_model.sample_gibbs(n_large, n_further, print_logs=sys.stdout, burn_in=200, n_steps=200)
 avg_edges = ergm_further_samples.sum() / (2 * n_further)
 log_msg("Produced", n_further, "samples, with ", avg_edges, "average # edges")
 

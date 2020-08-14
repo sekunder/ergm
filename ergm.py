@@ -77,7 +77,9 @@ class ERGM:
 
     def sample_gibbs(self, n_nodes, n_samples=1, burn_in=None, n_steps=None, g0=None, print_logs=None):
         """
-        Sample from this ensemble, returning a 3d numpy array which is `n_nodes` x `n_nodes` x `n_samples`.
+        Sample from this ensemble, returning a 3d numpy array which is `n_nodes` x `n_nodes` x `n_samples` and a 2d
+        numpy array which is `n_nodes x d`, where `d` is the number of statistics. The second array stores the
+        statistics of each sample, to avoid recomputing them (e.g. in parameter estimation)
 
         :param n_nodes: Number of nodes in the graph
         :param n_samples: Number of samples to return
@@ -85,7 +87,7 @@ class ERGM:
         :param n_steps: Number of steps between samples
         :param g0: Initial adjacency matrix to use. Default is previous internal state for sampler, if appropriate
         :param print_logs: where to print logs. Default is None, suppressing output
-        :return: A numpy array of integers
+        :return: A numpy array of integers (the adjacency matrices) and a numpy array of floats (the statistics)
 
         This method uses Gibbs sampling.
         """
