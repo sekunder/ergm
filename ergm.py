@@ -17,14 +17,14 @@ class ERGM:
 
         $$ P(G) = \frac{1}{Z} exp(\sum_a k_a(G) \theta_a) $$
 
-        where the functions $k_a$ are the components of `stats`, the coefficients $\theta_a$ are specified by `params`.
+        where the functions $k_a$ are the components of `stats`, the coefficients $\theta_a$ are specified by `theta`.
 
         :param stats: a function which takes a graph as an argument and returns a vector of statistics
         :param params: a vector of numerical values, or None to use default values of 0 for all coefficients.
         :param directed: Boolean, whether graphs in this ensemble are directed
         """
         self.stats = stats
-        self.params = np.array(params)
+        self.theta = np.array(params)
         self.directed = directed
 
         # some extra bits and bobs
@@ -33,7 +33,9 @@ class ERGM:
 
         # backend for sampling
         self.current_adj = np.zeros(0)  # when sampling, keep the current state of the MCMC
+        self.current_stats = np.zeros(0)
         self.current_logweight = 0.0  # the logweight of the current adjacency matrix
+        self.proposed_stats = np.zeros(0)
         self.proposed_logweight = 0.0
         # self.last_evaluated = np.zeros(0)  # maybe will just be a hash; some way of caching computations
 
@@ -62,8 +64,8 @@ class ERGM:
         :param adj: Adjacency matrix of a graph
         :return: a float
         """
-        # return np.sum([theta * k(adj) for theta, k in zip(self.params, self.stats)])
-        return np.dot(self.stats(adj), self.params)
+        # return np.sum([theta * k(adj) for theta, k in zip(self.theta, self.stats)])
+        return np.dot(self.stats(adj), self.theta)
 
     def hamiltonian(self, adj):
         """
@@ -95,11 +97,17 @@ class ERGM:
         elif g0 is None:
             log_msg("sample_gibbs: using empty graph for initial state", out=print_logs)
             self.current_adj = np.zeros((n_nodes, n_nodes))
-            self.current_logweight = self.logweight(self.current_adj)
+            self.current_stats = self.stats(self.current_adj)
+            self.current_logweight = np.dot(self.current_stats, self.theta)
+            self.proposed_stats = np.zeros_like(self.current_stats)
+            # self.current_logweight = self.logweight(self.current_adj)
         else:
             log_msg("sample_gibbs: using provided adjacency matrix for initial state", out=print_logs)
             self.current_adj = g0
-            self.current_logweight = self.logweight(g0)
+            self.current_stats = self.stats(self.current_adj)
+            self.current_logweight = np.dot(self.current_stats, self.theta)
+            self.proposed_stats = np.zeros_like(self.current_stats)
+            # self.current_logweight = self.logweight(g0)
 
         if burn_in is None:
             burn_in = 10 * (n_nodes ** 2) // 2
@@ -110,6 +118,7 @@ class ERGM:
         log_msg("sample_gibbs: %8d steps between samples" % n_steps, out=print_logs)
 
         samples = np.zeros((n_nodes, n_nodes, n_samples), dtype=int)
+        sample_stats = np.zeros((self.current_stats.shape[0], n_samples))
         total_steps = burn_in + n_steps * n_samples
         urand = np.random.rand(total_steps)
         edge_sequence = index_to_edge(np.random.choice(range(n_nodes * (n_nodes - 1) // (1 + (not self.directed))),
@@ -121,24 +130,26 @@ class ERGM:
             # assuming the logweight of the current state is already computed, we just need to compute the new values
             # self.current_adj[edge_sequence[0, step], edge_sequence[1, step]] = ~self.current_adj[edge_sequence[0, step], edge_sequence[1, step]]
             self._toggle_current_edge(edge_sequence[0, step], edge_sequence[1, step])
-            self.proposed_logweight = self.logweight(self.current_adj)
+            self.proposed_stats = self.stats(self.current_adj)
+            self.proposed_logweight = np.dot(self.proposed_stats, self.theta)
+            # self.proposed_logweight = self.logweight(self.current_adj)
             p_flip = 1 / (1 + math.exp(self.current_logweight - self.proposed_logweight))
             # p_flip = 1 / (1 + self.weight(self.current_adj))  # wrong!
             if urand[step] < p_flip:
                 # keep the flip; save the logweight
+                self.current_stats[:] = self.proposed_stats[:]
                 self.current_logweight = self.proposed_logweight
             else:
                 # flip the edge back
-                # self.current_adj[edge_sequence[0, step], edge_sequence[1, step]] = ~self.current_adj[
-                #     edge_sequence[0, step], edge_sequence[1, step]]
                 self._toggle_current_edge(edge_sequence[0, step], edge_sequence[1, step])
             if step >= burn_in and (step - burn_in) % n_steps == 0:
                 sample_num = (step - burn_in) // n_steps
                 if print_logs is not None and sample_num % (n_samples // 10) == 0:
                     log_msg("sample_gibbs: emitting sample %8d / %8d" % (sample_num, n_samples), out=print_logs)
                 samples[:, :, sample_num] = self.current_adj[:, :]
+                sample_stats[:, sample_num] = self.current_stats[:]
 
-        return samples
+        return samples, sample_stats
 
     def _toggle_current_edge(self, u, v):
         """
@@ -211,7 +222,7 @@ class ERGM:
         # compute the corresponding weights
         # sample_stats = np.array([[f(er_samples[:, :, s_idx]) for s_idx in range(n_samples)] for f in f_vec])
         sample_stats = np.array([f_vec(er_samples[:, :, s_idx] for s_idx in range(n_samples))])
-        sample_weights = np.exp((sample_stats * self.params).sum())  # TODO check sum axis and broadcast-ability
+        sample_weights = np.exp((sample_stats * self.theta).sum())  # TODO check sum axis and broadcast-ability
         sample_weights = sample_weights / sample_weights.sum()
 
         return (sample_weights * sample_stats).sum()
