@@ -116,6 +116,7 @@ class ERGM:
         if n_steps is None:
             n_steps = 10 * (n_nodes ** 2) // 2
 
+        log_msg("sample_gibbs: %8d nodes" % n_nodes)
         log_msg("sample_gibbs: %8d burn-in steps" % burn_in, out=print_logs)
         log_msg("sample_gibbs: %8d steps between samples" % n_steps, out=print_logs)
 
