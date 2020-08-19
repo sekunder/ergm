@@ -60,3 +60,16 @@ tri_ac1 = np.corrcoef(observed_stats[1, :-1], observed_stats[0, 1:])[0,1]
 log_msg("Correlation between edge density in successive samples:", edge_ac1)
 log_msg("Correlation between triangle density in successive samples:", tri_ac1)
 
+theta0 = np.random.randn(2) * 10 + np.ones(2) * 100
+log_msg("Now attempting to estimate parameters")
+log_msg("theta0 =", theta0)
+
+MLE = ERGM(edge_triangle, theta0)
+
+fit_start = time.time()
+MLE.parameter_estimation(observed_graphs, n_estim_samples=100, print_logs=sys.stdout)
+fit_end = time.time()
+
+log_msg("Finished in", fit_end - fit_start, "s")
+log_msg("theta hat :", MLE.theta)
+log_msg("theta true:", ET.theta)

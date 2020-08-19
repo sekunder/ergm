@@ -116,7 +116,7 @@ class ERGM:
         if n_steps is None:
             n_steps = 10 * (n_nodes ** 2) // 2
 
-        log_msg("sample_gibbs: %8d nodes" % n_nodes)
+        log_msg("sample_gibbs: %8d nodes" % n_nodes, out=print_logs)
         log_msg("sample_gibbs: %8d burn-in steps" % burn_in, out=print_logs)
         log_msg("sample_gibbs: %8d steps between samples" % n_steps, out=print_logs)
 
@@ -238,9 +238,10 @@ class ERGM:
         :param kwargs:
         """
         # currently just a wrapper for _MLE_sampler
-        self._MLE_sampler(observed, *kwargs)
+        self._MLE_sampler(observed, **kwargs)
 
-    def _MLE_sampler(self, observed, n_estim_samples=1000, alpha=0.01, max_iter=1000, L_tol=1e-8, **kwargs):
+    def _MLE_sampler(self, observed, n_estim_samples=1000, alpha=0.01, max_iter=1000, L_tol=1e-8,
+                     print_logs=None, sampler_logs=None, **kwargs):
         """
         Compute the maximum likelihood estimate (MLE) of parameters for the observed data using gradient ascent on
         the likelihood. The expected value of the current ERGM is estimated by sampling.
@@ -253,18 +254,29 @@ class ERGM:
         """
         if len(observed.shape) == 2:
             k_obs = self.stats(observed)
+            log_msg("MLE_sampler: Passed single graph; observed stats:\n", k_obs, out=print_logs)
         else:
-            k_obs = np.array([self.stats(observed[:, :, i]) for i in range(observed.shape[2])]).mean(axis=0)
+            all_obs_k = np.array([self.stats(observed[:,:,i]) for i in range(observed.shape[2])])
+            k_obs = all_obs_k.mean(axis=0)
+            log_msg("MLE_sampler: Computed stats, resulting shape:", all_obs_k.shape, out=print_logs)
+            log_msg("MLE_sampler: average stats:\n", k_obs, out=print_logs)
+
+        log_msg("MLE_sampler: %8d estimate samples" % n_estim_samples, out=print_logs)
+        log_msg("MLE_sampler: %8f alpha" % alpha, out=print_logs)
+        log_msg("MLE_sampler: %8d max iterations" % max_iter, out=print_logs)
+        log_msg("MLE_sampler: %8e L tolerance" % L_tol, out=print_logs)
+
+        trajectory = np.zeros((self.theta.shape[0], max_iter))
 
         n_nodes = observed.shape[0]
         iteration = 0
-        estim_samples, estim_stats = self.sample_gibbs(n_nodes, n_estim_samples, *kwargs)
+        estim_samples, estim_stats = self.sample_gibbs(n_nodes, n_estim_samples, **kwargs)
         # Ek = np.array([self.stats(estim_samples[:,:,i]) for i in range(n_estim_samples)]).mean(axis=0)
-        Ek = estim_stats.mean(axis=0)
-        while np.dot(Ek - k_obs, Ek - k_obs) > L_tol and iteration < max_iter:
-            estim_samples, estim_stats = self.sample_gibbs(n_nodes, n_estim_samples, *kwargs)
+        Ek = estim_stats.mean(axis=1)
+        while np.sqrt(np.dot(Ek - k_obs, Ek - k_obs)) > L_tol and iteration < max_iter:
+            estim_samples, estim_stats = self.sample_gibbs(n_nodes, n_estim_samples, print_logs=sampler_logs, **kwargs)
             # Ek = np.array([self.stats(estim_samples[:, :, i]) for i in range(n_estim_samples)]).mean(axis=0)
-            Ek = estim_samples.mean(axis=0)
+            Ek = estim_stats.mean(axis=1)
             self._set_theta(self.theta + alpha * (k_obs - Ek))
 
     def _set_theta(self, theta_new, compute_new=False):
