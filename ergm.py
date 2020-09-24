@@ -20,7 +20,7 @@ class ERGM:
         where the functions $k_a$ are the components of `stats`, the coefficients $\theta_a$ are specified by `theta`.
 
         :param stats: a function which takes a graph as an argument and returns a vector of statistics
-        :param params: a vector of numerical values, or None to use default values of 0 for all coefficients.
+        :param params: an iterable of numerical values.
         :param directed: Boolean, whether graphs in this ensemble are directed
         """
         self.stats = stats
@@ -38,6 +38,8 @@ class ERGM:
         self.proposed_stats = np.zeros(0)
         self.proposed_logweight = 0.0
         # self.last_evaluated = np.zeros(0)  # maybe will just be a hash; some way of caching computations
+        
+        self._Z = dict()
 
     def eval_stats(self, adj):
         """
@@ -121,7 +123,7 @@ class ERGM:
         log_msg("sample_gibbs: %8d steps between samples" % n_steps, out=print_logs)
 
         samples = np.zeros((n_nodes, n_nodes, n_samples), dtype=int)
-        sample_stats = np.zeros((self.current_stats.shape[0], n_samples))
+        sample_stats = np.zeros((self.theta.shape[0], n_samples))
         total_steps = burn_in + n_steps * n_samples
         urand = np.random.rand(total_steps)
         edge_sequence = index_to_edge(np.random.choice(range(n_nodes * (n_nodes - 1) // (1 + (not self.directed))),
@@ -147,8 +149,8 @@ class ERGM:
                 self._toggle_current_edge(edge_sequence[0, step], edge_sequence[1, step])
             if step >= burn_in and (step - burn_in) % n_steps == 0:
                 sample_num = (step - burn_in) // n_steps
-                if print_logs is not None and sample_num % (n_samples // 10) == 0:
-                    log_msg("sample_gibbs: emitting sample %8d / %8d" % (sample_num, n_samples), out=print_logs)
+                if print_logs is not None and (sample_num + 1) % (n_samples // 10) == 0:
+                    log_msg("sample_gibbs: emitting sample %8d / %8d" % (sample_num + 1, n_samples), out=print_logs)
                 samples[:, :, sample_num] = self.current_adj[:, :]
                 sample_stats[:, sample_num] = self.current_stats[:]
 
@@ -166,6 +168,7 @@ class ERGM:
         self.current_adj[u, v] = 1 - self.current_adj[u, v]
         if not self.directed:
             self.current_adj[v, u] = 1 - self.current_adj[v, u]
+        # TODO implement a "change in stats" function
 
     def biased_loglikelihood(self, samples):
         """
@@ -193,7 +196,7 @@ class ERGM:
         if n_samples is None:
             n_samples = n ** 2
 
-        samples, _ = self.sample_gibbs(n, n_samples, *kwargs)
+        samples, _ = self.sample_gibbs(n, n_samples, **kwargs)
         return np.array([f_vec(samples[:, :, i] for i in range(n_samples))]).mean(axis=0)
 
     def importance_estimate_expected(self, n, f_vec=None, n_samples=None, q=None):
@@ -259,7 +262,7 @@ class ERGM:
             all_obs_k = np.array([self.stats(observed[:,:,i]) for i in range(observed.shape[2])])
             k_obs = all_obs_k.mean(axis=0)
             log_msg("MLE_sampler: Computed stats, resulting shape:", all_obs_k.shape, out=print_logs)
-            log_msg("MLE_sampler: average stats:\n", k_obs, out=print_logs)
+            log_msg("MLE_sampler: average stats:", k_obs, out=print_logs)
 
         log_msg("MLE_sampler: %8d estimate samples" % n_estim_samples, out=print_logs)
         log_msg("MLE_sampler: %8f alpha" % alpha, out=print_logs)
@@ -273,11 +276,21 @@ class ERGM:
         estim_samples, estim_stats = self.sample_gibbs(n_nodes, n_estim_samples, **kwargs)
         # Ek = np.array([self.stats(estim_samples[:,:,i]) for i in range(n_estim_samples)]).mean(axis=0)
         Ek = estim_stats.mean(axis=1)
-        while np.sqrt(np.dot(Ek - k_obs, Ek - k_obs)) > L_tol and iteration < max_iter:
+        grad = k_obs - Ek
+        grad_norm = np.sqrt(np.dot(grad, grad))
+        log_msg("MLE_sampler:", "iter", " |grad|  ", "E_sampled", "/", "grad", "/", "theta", out=print_logs)
+        log_msg("MLE_sampler:", "%4d" % iteration, " %8f" % grad_norm, Ek, "/", grad, "/", self.theta, out=print_logs)
+        while grad_norm > L_tol and iteration < max_iter:
             estim_samples, estim_stats = self.sample_gibbs(n_nodes, n_estim_samples, print_logs=sampler_logs, **kwargs)
             # Ek = np.array([self.stats(estim_samples[:, :, i]) for i in range(n_estim_samples)]).mean(axis=0)
             Ek = estim_stats.mean(axis=1)
-            self._set_theta(self.theta + alpha * (k_obs - Ek))
+            grad = k_obs - Ek
+            self._set_theta(self.theta + (alpha / (iteration + 1)) * (k_obs - Ek))
+            grad_norm = np.sqrt(np.dot(grad, grad))
+            iteration += 1
+            # if iteration % (max_iter // 10) == 0:
+            log_msg("MLE_sampler:", "%4d" % iteration, " %8f" % grad_norm, Ek, "/", grad, "/", self.theta,
+                    out=print_logs)
 
     def _set_theta(self, theta_new, compute_new=False):
         """

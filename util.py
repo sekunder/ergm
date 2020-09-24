@@ -9,7 +9,7 @@ import sys
 def log_msg(*args, out=sys.stdout, **kwargs):
     """Print message m with a timestamp if out is not None."""
     if out:
-        print(datetime.datetime.now().strftime("%Y %m %d %H:%M:%S "), *args, *kwargs, file=out)
+        print(datetime.datetime.now().strftime("%Y %m %d %H:%M:%S "), *args, **kwargs, file=out)
 
 def index_to_edge(idx, n, directed=True, order="columns"):
     """
