@@ -243,17 +243,21 @@ class ERGM:
         # currently just a wrapper for _MLE_sampler
         self._MLE_sampler(observed, **kwargs)
 
-    def _MLE_sampler(self, observed, n_estim_samples=1000, alpha=0.01, max_iter=1000, L_tol=1e-8,
+    def _MLE_sampler(self, observed, n_estim_samples=1000, alpha=1, alpha_rate=0.999, max_iter=1000, x_tol=1e-8,
                      print_logs=None, sampler_logs=None, **kwargs):
         """
         Compute the maximum likelihood estimate (MLE) of parameters for the observed data using gradient ascent on
         the likelihood. The expected value of the current ERGM is estimated by sampling.
 
-        :param observed:
-        :param n_sample:
-        :param alpha:
-        :param max_iter:
-        :return:
+        :param observed: Observed graphs, shape n_nodes x n_nodes x n_samples
+        :param n_estim_samples: samples to use at each estimation step
+        :param alpha: Scale factor of gradient.
+        :param max_iter: Maximum number of iterations to take
+        :param x_tol: Quit trying to optimize if gradient norm falls below x_tol
+        :param print_logs: File pointer, where to print logs (default None to suppress output)
+        :param sampler_logs: File pointer, where sampler method should print logs (default None to suppress output)
+        :param kwargs: Additional keyword arguments are passed to sampler
+        :return: Dictionary including trajectory and such.
         """
         if len(observed.shape) == 2:
             k_obs = self.stats(observed)
@@ -267,30 +271,64 @@ class ERGM:
         log_msg("MLE_sampler: %8d estimate samples" % n_estim_samples, out=print_logs)
         log_msg("MLE_sampler: %8f alpha" % alpha, out=print_logs)
         log_msg("MLE_sampler: %8d max iterations" % max_iter, out=print_logs)
-        log_msg("MLE_sampler: %8e L tolerance" % L_tol, out=print_logs)
+        log_msg("MLE_sampler: %8e L tolerance" % x_tol, out=print_logs)
 
-        trajectory = np.zeros((self.theta.shape[0], max_iter))
+        # trajectory = np.zeros((max_iter, self.theta.shape[0]))
 
         n_nodes = observed.shape[0]
-        iteration = 0
-        estim_samples, estim_stats = self.sample_gibbs(n_nodes, n_estim_samples, **kwargs)
-        # Ek = np.array([self.stats(estim_samples[:,:,i]) for i in range(n_estim_samples)]).mean(axis=0)
-        Ek = estim_stats.mean(axis=1)
-        grad = k_obs - Ek
-        grad_norm = np.sqrt(np.dot(grad, grad))
-        log_msg("MLE_sampler:", "iter", " |grad|  ", "E_sampled", "/", "grad", "/", "theta", out=print_logs)
-        log_msg("MLE_sampler:", "%4d" % iteration, " %8f" % grad_norm, Ek, "/", grad, "/", self.theta, out=print_logs)
-        while grad_norm > L_tol and iteration < max_iter:
-            estim_samples, estim_stats = self.sample_gibbs(n_nodes, n_estim_samples, print_logs=sampler_logs, **kwargs)
-            # Ek = np.array([self.stats(estim_samples[:, :, i]) for i in range(n_estim_samples)]).mean(axis=0)
-            Ek = estim_stats.mean(axis=1)
-            grad = k_obs - Ek
-            self._set_theta(self.theta + (alpha / (iteration + 1)) * (k_obs - Ek))
-            grad_norm = np.sqrt(np.dot(grad, grad))
-            iteration += 1
-            # if iteration % (max_iter // 10) == 0:
-            log_msg("MLE_sampler:", "%4d" % iteration, " %8f" % grad_norm, Ek, "/", grad, "/", self.theta,
-                    out=print_logs)
+        # iteration = 0
+        # estim_samples, estim_stats = self.sample_gibbs(n_nodes, n_estim_samples, **kwargs)
+        # # Ek = np.array([self.stats(estim_samples[:,:,i]) for i in range(n_estim_samples)]).mean(axis=0)
+        # Ek = estim_stats.mean(axis=1)
+        # grad = k_obs - Ek
+        # grad_norm = np.sqrt(np.dot(grad, grad))
+        # log_msg("MLE_sampler:", "iter", " |grad|  ", "E_sampled", "/", "grad", "/", "theta", out=print_logs)
+        # log_msg("MLE_sampler:", "%4d" % iteration, " %8f" % grad_norm, Ek, "/", grad, "/", self.theta, out=print_logs)
+        # while grad_norm > x_tol and iteration < max_iter:
+        #     estim_samples, estim_stats = self.sample_gibbs(n_nodes, n_estim_samples, print_logs=sampler_logs, **kwargs)
+        #     # Ek = np.array([self.stats(estim_samples[:, :, i]) for i in range(n_estim_samples)]).mean(axis=0)
+        #     Ek = estim_stats.mean(axis=1)
+        #     grad = k_obs - Ek
+        #     self._set_theta(self.theta + (alpha / (iteration + 1)) * (k_obs - Ek))
+        #     grad_norm = np.sqrt(np.dot(grad, grad))
+        #     iteration += 1
+        #     # if iteration % (max_iter // 10) == 0:
+        #     log_msg("MLE_sampler:", "%4d" % iteration, " %8f" % grad_norm, Ek, "/", grad, "/", self.theta,
+        #             out=print_logs)
+        theta_t = np.zeros((max_iter+1, *self.theta.shape))
+        k_bar_t = np.zeros_like(theta_t)
+        grad_t = np.zeros_like(theta_t)
+        theta_t[0, :] = self.theta
+        G_samp = np.zeros((n_nodes, n_nodes, n_estim_samples), dtype=int)
+        k_samp = np.zeros((*self.theta.shape, n_estim_samples))
+        log_msg(f"{'iter':4} {'theta(t)':20}   {'gradient':20}   {'|gradient|':10}   {'alpha':10}")
+        stopping_criteria = []
+        for step in range(max_iter):
+            G_samp[:,:,:], k_samp[:,:] = self.sample_gibbs(n_nodes, n_estim_samples, print_logs=sampler_logs, **kwargs)
+            k_bar_t[step, :] = k_samp.mean(axis=1)
+            grad_t[step, :] = k_obs - k_bar_t[step, :]
+            grad_norm = np.linalg.norm(grad_t[step, :])
+            theta_t[step+1, :] = theta_t[step, :] + alpha * grad_t[step, :]
+            self._set_theta(theta_t[step+1, :], True)
+
+            # update alpha
+            alpha = alpha * alpha_rate
+            # check stopping criteria
+            if step + 1 == max_iter:
+                stopping_criteria.append("max_iter reached")
+            if grad_norm < x_tol:
+                stopping_criteria.append("grad_norm < x_tol")
+            if len(stopping_criteria) > 0:
+                break
+
+        trajectory = {"theta": theta_t[:step, :],
+                      "expected stats": k_bar_t[:step, :],
+                      "gradient": grad_t[:step, :],
+                      "stop": stopping_criteria}
+        return trajectory
+
+
+
 
     def _set_theta(self, theta_new, compute_new=False):
         """
