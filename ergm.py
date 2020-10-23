@@ -241,7 +241,7 @@ class ERGM:
         :param kwargs:
         """
         # currently just a wrapper for _MLE_sampler
-        self._MLE_sampler(observed, **kwargs)
+        return self._MLE_sampler(observed, **kwargs)
 
     def _MLE_sampler(self, observed, n_estim_samples=1000, alpha=1, alpha_rate=0.999, max_iter=1000, x_tol=1e-8,
                      print_logs=None, sampler_logs=None, **kwargs):
@@ -298,17 +298,24 @@ class ERGM:
         theta_t = np.zeros((max_iter+1, *self.theta.shape))
         k_bar_t = np.zeros_like(theta_t)
         grad_t = np.zeros_like(theta_t)
+        delta_theta = np.zeros_like(self.theta)
         theta_t[0, :] = self.theta
         G_samp = np.zeros((n_nodes, n_nodes, n_estim_samples), dtype=int)
         k_samp = np.zeros((*self.theta.shape, n_estim_samples))
-        log_msg(f"{'iter':4} {'theta(t)':20}   {'gradient':20}   {'|gradient|':10}   {'alpha':10}")
+        # log_msg(f"{'iter':4} {'theta(t)':20}   {'gradient':20}   {'|gradient|':10}   {'D theta':10}")
+        log_msg("iter theta / gradient / |gradient| / D theta / |D theta|", out=print_logs)
         stopping_criteria = []
+        stop_iter = 0
         for step in range(max_iter):
             G_samp[:,:,:], k_samp[:,:] = self.sample_gibbs(n_nodes, n_estim_samples, print_logs=sampler_logs, **kwargs)
             k_bar_t[step, :] = k_samp.mean(axis=1)
             grad_t[step, :] = k_obs - k_bar_t[step, :]
             grad_norm = np.linalg.norm(grad_t[step, :])
-            theta_t[step+1, :] = theta_t[step, :] + alpha * grad_t[step, :]
+            delta_theta[:] = alpha * grad_t[step, :]
+            # log_msg(f"{step:4} {self.theta} {grad_t[step,:]}   {grad_norm:8f}   {alpha:8.3f}")
+            log_msg("%4d" % step, self.theta, "/", grad_t[step,:], "/", grad_norm, "/", delta_theta, "/", alpha * grad_norm, out=print_logs)
+
+            theta_t[step+1, :] = theta_t[step, :] + delta_theta
             self._set_theta(theta_t[step+1, :], True)
 
             # update alpha
@@ -319,12 +326,14 @@ class ERGM:
             if grad_norm < x_tol:
                 stopping_criteria.append("grad_norm < x_tol")
             if len(stopping_criteria) > 0:
+                stop_iter = step
                 break
 
-        trajectory = {"theta": theta_t[:step, :],
-                      "expected stats": k_bar_t[:step, :],
-                      "gradient": grad_t[:step, :],
-                      "stop": stopping_criteria}
+        trajectory = {"theta": theta_t[:stop_iter, :],
+                      "expected stats": k_bar_t[:stop_iter, :],
+                      "gradient": grad_t[:stop_iter, :],
+                      "stop": stopping_criteria,
+                      "stop_iter": stop_iter}
         return trajectory
 
 

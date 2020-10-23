@@ -11,6 +11,7 @@ def log_msg(*args, out=sys.stdout, **kwargs):
     if out:
         print(datetime.datetime.now().strftime("%Y %m %d %H:%M:%S "), *args, **kwargs, file=out)
 
+
 def index_to_edge(idx, n, directed=True, order="columns"):
     """
     Returns the ordered pair `(e0,e1)` for the edge which has linear index `idx`. This is essentially the linear
@@ -49,3 +50,19 @@ def triangular_root(x):
 def triangular_number(n):
     """Returns the `n`th triangular number `n * (n + 1) // 2`"""
     return n * (n + 1) // 2
+
+
+def ellipse(center, v1, v2, resolution=10):
+    """
+    Returns two arrays, `x`, `y`, such that `plt.plot(x,y)` will be an ellipse with specified center and axes.
+    The `resolution` parameter adjusts the number of points around the ellipse
+    :param center: coordinates of center
+    :param v1: 1st axis
+    :param v2: 2nd axis
+    :param resolution: number of samples points around ellipse
+    :return: Two arrays
+    """
+    ls = np.linspace(0, 2 * np.pi, num=resolution)
+    x = center[0] + np.cos(ls) * v1[0] + np.sin(ls) * v2[0]
+    y = center[1] + np.cos(ls) * v1[1] + np.sin(ls) * v2[1]
+    return x, y
