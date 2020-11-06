@@ -325,6 +325,10 @@ class ERGM:
                 stopping_criteria.append("keyboard interrupt")
                 stop_iter = step - 1
                 break
+            except Exception as e:
+                stopping_criteria.append("unhandled exception: {}".format(e))
+                stop_iter = step - 1
+                break
 
 
 
