@@ -38,7 +38,7 @@ class ERGM:
         self.proposed_stats = np.zeros(0)
         self.proposed_logweight = 0.0
         # self.last_evaluated = np.zeros(0)  # maybe will just be a hash; some way of caching computations
-        
+
         self._Z = dict()
 
     def eval_stats(self, adj):
@@ -114,8 +114,10 @@ class ERGM:
             # self.current_logweight = self.logweight(g0)
 
         if burn_in is None:
+            # TODO find a better way to estimate this
             burn_in = 10 * (n_nodes ** 2) // 2
         if n_steps is None:
+            # TODO find a better way to estimate this
             n_steps = 10 * (n_nodes ** 2) // 2
 
         log_msg("sample_gibbs: %8d nodes" % n_nodes, out=print_logs)
@@ -137,9 +139,7 @@ class ERGM:
             self._toggle_current_edge(edge_sequence[0, step], edge_sequence[1, step])
             self.proposed_stats = self.stats(self.current_adj)
             self.proposed_logweight = np.dot(self.proposed_stats, self.theta)
-            # self.proposed_logweight = self.logweight(self.current_adj)
             p_flip = 1 / (1 + math.exp(self.current_logweight - self.proposed_logweight))
-            # p_flip = 1 / (1 + self.weight(self.current_adj))  # wrong!
             if urand[step] < p_flip:
                 # keep the flip; save the logweight
                 self.current_stats[:] = self.proposed_stats[:]
@@ -243,7 +243,7 @@ class ERGM:
         # currently just a wrapper for _MLE_sampler
         return self._MLE_sampler(observed, **kwargs)
 
-    def _MLE_sampler(self, observed, n_estim_samples=1000, alpha=1, alpha_rate=0.999, max_iter=1000, x_tol=1e-8,
+    def _MLE_sampler(self, observed, n_estim_samples=100, alpha=1, alpha_rate=0.999, max_iter=1000, x_tol=1e-8,
                      print_logs=None, sampler_logs=None, **kwargs):
         """
         Compute the maximum likelihood estimate (MLE) of parameters for the observed data using gradient ascent on
@@ -263,7 +263,7 @@ class ERGM:
             k_obs = self.stats(observed)
             log_msg("MLE_sampler: Passed single graph; observed stats:\n", k_obs, out=print_logs)
         else:
-            all_obs_k = np.array([self.stats(observed[:,:,i]) for i in range(observed.shape[2])])
+            all_obs_k = np.array([self.stats(observed[:, :, i]) for i in range(observed.shape[2])])
             k_obs = all_obs_k.mean(axis=0)
             log_msg("MLE_sampler: Computed stats, resulting shape:", all_obs_k.shape, out=print_logs)
             log_msg("MLE_sampler: average stats:", k_obs, out=print_logs)
@@ -276,68 +276,65 @@ class ERGM:
         # trajectory = np.zeros((max_iter, self.theta.shape[0]))
 
         n_nodes = observed.shape[0]
-        # iteration = 0
-        # estim_samples, estim_stats = self.sample_gibbs(n_nodes, n_estim_samples, **kwargs)
-        # # Ek = np.array([self.stats(estim_samples[:,:,i]) for i in range(n_estim_samples)]).mean(axis=0)
-        # Ek = estim_stats.mean(axis=1)
-        # grad = k_obs - Ek
-        # grad_norm = np.sqrt(np.dot(grad, grad))
-        # log_msg("MLE_sampler:", "iter", " |grad|  ", "E_sampled", "/", "grad", "/", "theta", out=print_logs)
-        # log_msg("MLE_sampler:", "%4d" % iteration, " %8f" % grad_norm, Ek, "/", grad, "/", self.theta, out=print_logs)
-        # while grad_norm > x_tol and iteration < max_iter:
-        #     estim_samples, estim_stats = self.sample_gibbs(n_nodes, n_estim_samples, print_logs=sampler_logs, **kwargs)
-        #     # Ek = np.array([self.stats(estim_samples[:, :, i]) for i in range(n_estim_samples)]).mean(axis=0)
-        #     Ek = estim_stats.mean(axis=1)
-        #     grad = k_obs - Ek
-        #     self._set_theta(self.theta + (alpha / (iteration + 1)) * (k_obs - Ek))
-        #     grad_norm = np.sqrt(np.dot(grad, grad))
-        #     iteration += 1
-        #     # if iteration % (max_iter // 10) == 0:
-        #     log_msg("MLE_sampler:", "%4d" % iteration, " %8f" % grad_norm, Ek, "/", grad, "/", self.theta,
-        #             out=print_logs)
-        theta_t = np.zeros((max_iter+1, *self.theta.shape))
+
+        # trajectory of thetas and such
+        theta_t = np.zeros((max_iter + 1, *self.theta.shape))
         k_bar_t = np.zeros_like(theta_t)
         grad_t = np.zeros_like(theta_t)
+        covar_t = np.zeros((max_iter + 1, *self.theta.shape, *self.theta.shape))
+
+        # local variables of the algorithm
         delta_theta = np.zeros_like(self.theta)
-        theta_t[0, :] = self.theta
+        theta_t[0, :] = self.theta  # store initial value of theta
+
+        # the sample values at each iteration
         G_samp = np.zeros((n_nodes, n_nodes, n_estim_samples), dtype=int)
         k_samp = np.zeros((*self.theta.shape, n_estim_samples))
-        # log_msg(f"{'iter':4} {'theta(t)':20}   {'gradient':20}   {'|gradient|':10}   {'D theta':10}")
-        log_msg("iter theta / gradient / |gradient| / D theta / |D theta|", out=print_logs)
+
+        log_msg(f"{'iter':4} {'|theta(t)|':20} {'|gradient|':20} {'|Delta theta|':20}")
         stopping_criteria = []
         stop_iter = 0
         for step in range(max_iter):
-            G_samp[:,:,:], k_samp[:,:] = self.sample_gibbs(n_nodes, n_estim_samples, print_logs=sampler_logs, **kwargs)
-            k_bar_t[step, :] = k_samp.mean(axis=1)
-            grad_t[step, :] = k_obs - k_bar_t[step, :]
-            grad_norm = np.linalg.norm(grad_t[step, :])
-            delta_theta[:] = alpha * grad_t[step, :]
-            # log_msg(f"{step:4} {self.theta} {grad_t[step,:]}   {grad_norm:8f}   {alpha:8.3f}")
-            log_msg("%4d" % step, self.theta, "/", grad_t[step,:], "/", grad_norm, "/", delta_theta, "/", alpha * grad_norm, out=print_logs)
+            try:
+                G_samp[:, :, :], k_samp[:, :] = self.sample_gibbs(n_nodes, n_estim_samples, print_logs=sampler_logs,
+                                                                  **kwargs)
+                k_bar_t[step, :] = k_samp.mean(axis=1)
+                covar_t[step, :, :] = np.cov(k_samp)
+                grad_t[step, :] = k_obs - k_bar_t[step, :]
+                grad_norm = np.linalg.norm(grad_t[step, :])
+                delta_theta[:] = alpha * grad_t[step, :]
+                # log_msg(f"{step:4} {self.theta} {grad_t[step,:]}   {grad_norm:8f}   {alpha:8.3f}")
+                # TODO revise this output string, since it gets longer with more stats
+                # log_msg("%4d" % step, self.theta, "/", grad_t[step,:], "/", grad_norm, "/", delta_theta, "/", alpha * grad_norm, out=print_logs)
+                log_msg(f"{step:4d} {np.linalg.norm(theta_t[step, :]):20.8f} {grad_norm:20.8f} {alpha * grad_norm:20.8f}")
 
-            theta_t[step+1, :] = theta_t[step, :] + delta_theta
-            self._set_theta(theta_t[step+1, :], True)
+                theta_t[step + 1, :] = theta_t[step, :] + delta_theta
+                self._set_theta(theta_t[step + 1, :], True)
 
-            # update alpha
-            alpha = alpha * alpha_rate
-            # check stopping criteria
-            if step + 1 == max_iter:
-                stopping_criteria.append("max_iter reached")
-            if grad_norm < x_tol:
-                stopping_criteria.append("grad_norm < x_tol")
-            if len(stopping_criteria) > 0:
-                stop_iter = step
+                # update alpha
+                alpha = alpha * alpha_rate
+                # check stopping criteria
+                if step + 1 == max_iter:
+                    stopping_criteria.append("max_iter reached")
+                if grad_norm < x_tol:
+                    stopping_criteria.append("grad_norm < x_tol")
+                if len(stopping_criteria) > 0:
+                    stop_iter = step
+                    break
+            except KeyboardInterrupt:
+                stopping_criteria.append("keyboard interrupt")
+                stop_iter = step - 1
                 break
+
+
 
         trajectory = {"theta": theta_t[:stop_iter, :],
                       "expected stats": k_bar_t[:stop_iter, :],
+                      "covariances": covar_t[:stop_iter, :, :],
                       "gradient": grad_t[:stop_iter, :],
                       "stop": stopping_criteria,
                       "stop_iter": stop_iter}
         return trajectory
-
-
-
 
     def _set_theta(self, theta_new, compute_new=False):
         """
