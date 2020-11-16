@@ -11,19 +11,23 @@ from util import index_to_edge, log_msg
 
 
 class ERGM:
-    def __init__(self, stats, params, directed=False):
+    def __init__(self, stats, params, delta_stats=None, directed=False):
         """
-        Construct an ergm with specified vector of statistics. In this ensemble,
+        Construct an ergm over binary graphs (i.e. edges present or absent) with specified vector of statistics. In
+        this ensemble, the probability density function is given by
 
-        $$ P(G) = \frac{1}{Z} exp(\sum_a k_a(G) \theta_a) $$
+        $$ P(G | \theta) = \frac{1}{Z} exp(\sum_a k_a(G) \theta_a) $$
 
-        where the functions $k_a$ are the components of `stats`, the coefficients $\theta_a$ are specified by `theta`.
+        where the functions $k_a$ are the components of `stats`, the coefficients $\theta_a$ are specified by `params`.
 
         :param stats: a function which takes a graph as an argument and returns a vector of statistics
         :param params: an iterable of numerical values.
+        :param delta_stats: a function which takes a binary adjacency matrix and a pair of indices as input, and returns
+                            the difference in stats (stats with edge) - (stats without edge)
         :param directed: Boolean, whether graphs in this ensemble are directed
         """
         self.stats = stats
+        self.delta_stats = delta_stats
         self.theta = np.array(params)
         self.directed = directed
 
@@ -51,6 +55,26 @@ class ERGM:
         # TODO implement some hashing/caching to avoid repeated computations
         # return np.array([f(adj) for f in self.stats])
         return self.stats(adj)
+
+    def _naive_delta_stats(self, u, v, recompute_current=True):
+        """
+        Compute the difference between the stats of the current adjacency matrix and the adjacency matrix with edge
+        `(u,v)` toggled (returns $k(g) - k(g')$).
+
+        :param u: first vertex
+        :param v: second vertex
+        :param recompute_current: If true, compute the stats of the current adjacency matrix
+        :return: the difference $k(g) - k(g')$
+
+        This is fairly inefficient as it will compute the stats of the entire matrix, possibly twice.
+        """
+        # TODO think through a way to keep track of whether current_stats is actually current
+        if recompute_current:
+            self.current_stats = self.eval_stats(self.current_adj)
+        self._toggle_current_edge(u, v)
+        new_stats = self.eval_stats(self.current_adj)
+        self._toggle_current_edge(u, v)
+        return self.current_stats - new_stats
 
     def weight(self, adj):
         """
@@ -114,11 +138,12 @@ class ERGM:
             # self.current_logweight = self.logweight(g0)
 
         if burn_in is None:
-            # TODO find a better way to estimate this
-            burn_in = 10 * (n_nodes ** 2) // 2
+            # burn_in = 10 * (n_nodes ** 2) // 2
+            burn_in = math.ceil(n_nodes * math.log(n_nodes)) * len(
+                self.stats)  # based on some rough estimates/simulations
         if n_steps is None:
-            # TODO find a better way to estimate this
-            n_steps = 10 * (n_nodes ** 2) // 2
+            # n_steps = 10 * (n_nodes ** 2) // 2
+            n_steps = math.ceil(n_nodes * math.log(n_nodes)) * len(self.stats)
 
         log_msg("sample_gibbs: %8d nodes" % n_nodes, out=print_logs)
         log_msg("sample_gibbs: %8d burn-in steps" % burn_in, out=print_logs)
@@ -136,10 +161,12 @@ class ERGM:
         for step in range(total_steps):
             # assuming the logweight of the current state is already computed, we just need to compute the new values
             # self.current_adj[edge_sequence[0, step], edge_sequence[1, step]] = ~self.current_adj[edge_sequence[0, step], edge_sequence[1, step]]
-            self._toggle_current_edge(edge_sequence[0, step], edge_sequence[1, step])
-            self.proposed_stats = self.stats(self.current_adj)
+            delta_k = self._toggle_current_edge(edge_sequence[0, step], edge_sequence[1, step])
+            # self.proposed_stats = self.stats(self.current_adj)
+            self.proposed_stats = self.current_stats - delta_k
             self.proposed_logweight = np.dot(self.proposed_stats, self.theta)
-            p_flip = 1 / (1 + math.exp(self.current_logweight - self.proposed_logweight))
+            # p_flip = 1 / (1 + math.exp(self.current_logweight - self.proposed_logweight))
+            p_flip = 1 / (1 + math.exp(np.dot(self.theta, delta_k)))
             if urand[step] < p_flip:
                 # keep the flip; save the logweight
                 self.current_stats[:] = self.proposed_stats[:]
@@ -165,10 +192,15 @@ class ERGM:
         :return: None
         """
         # currently assuming a binary adjacency matrix; this may change in the future
+        if self.delta_stats is not None:
+            delta_k = self.delta_stats(self.current_adj, u, v)
+        else:
+            delta_k = self._naive_delta_stats(self.current_adj, u, v)
         self.current_adj[u, v] = 1 - self.current_adj[u, v]
         if not self.directed:
             self.current_adj[v, u] = 1 - self.current_adj[v, u]
-        # TODO implement a "change in stats" function
+        return delta_k
+
 
     def biased_loglikelihood(self, samples):
         """
@@ -303,10 +335,9 @@ class ERGM:
                 grad_t[step, :] = k_obs - k_bar_t[step, :]
                 grad_norm = np.linalg.norm(grad_t[step, :])
                 delta_theta[:] = alpha * grad_t[step, :]
-                # log_msg(f"{step:4} {self.theta} {grad_t[step,:]}   {grad_norm:8f}   {alpha:8.3f}")
-                # TODO revise this output string, since it gets longer with more stats
-                # log_msg("%4d" % step, self.theta, "/", grad_t[step,:], "/", grad_norm, "/", delta_theta, "/", alpha * grad_norm, out=print_logs)
-                log_msg(f"{step:4d} {np.linalg.norm(theta_t[step, :]):20.8f} {grad_norm:20.8f} {alpha * grad_norm:20.8f}")
+
+                log_msg(
+                    f"{step:4d} {np.linalg.norm(theta_t[step, :]):20.8f} {grad_norm:20.8f} {alpha * grad_norm:20.8f}")
 
                 theta_t[step + 1, :] = theta_t[step, :] + delta_theta
                 self._set_theta(theta_t[step + 1, :], True)
@@ -314,6 +345,7 @@ class ERGM:
                 # update alpha
                 alpha = alpha * alpha_rate
                 # check stopping criteria
+                # TODO implement 2nd order stopping criteria
                 if step + 1 == max_iter:
                     stopping_criteria.append("max_iter reached")
                 if grad_norm < x_tol:
@@ -329,8 +361,6 @@ class ERGM:
                 stopping_criteria.append("unhandled exception: {}".format(e))
                 stop_iter = step - 1
                 break
-
-
 
         trajectory = {"theta": theta_t[:stop_iter, :],
                       "expected stats": k_bar_t[:stop_iter, :],
