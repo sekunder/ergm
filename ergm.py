@@ -28,6 +28,8 @@ class ERGM:
         """
         self.stats = stats
         self.delta_stats = delta_stats
+        if self.delta_stats is None:
+            self.delta_stats = self._naive_delta_stats
         self.theta = np.array(params)
         self.directed = directed
 
@@ -56,11 +58,12 @@ class ERGM:
         # return np.array([f(adj) for f in self.stats])
         return self.stats(adj)
 
-    def _naive_delta_stats(self, u, v, recompute_current=True):
+    def _naive_delta_stats(self, g, u, v, recompute_current=False):
         """
         Compute the difference between the stats of the current adjacency matrix and the adjacency matrix with edge
         `(u,v)` toggled (returns $k(g) - k(g')$).
 
+        :param g: graph in question
         :param u: first vertex
         :param v: second vertex
         :param recompute_current: If true, compute the stats of the current adjacency matrix
@@ -70,10 +73,10 @@ class ERGM:
         """
         # TODO think through a way to keep track of whether current_stats is actually current
         if recompute_current:
-            self.current_stats = self.eval_stats(self.current_adj)
-        self._toggle_current_edge(u, v)
-        new_stats = self.eval_stats(self.current_adj)
-        self._toggle_current_edge(u, v)
+            self.current_stats = self.eval_stats(g)
+        self._toggle_current_edge(u, v)  # flip the edge
+        new_stats = self.eval_stats(g)
+        self._toggle_current_edge(u, v)  # flip the edge back
         return self.current_stats - new_stats
 
     def weight(self, adj):
@@ -139,8 +142,8 @@ class ERGM:
 
         if burn_in is None:
             # burn_in = 10 * (n_nodes ** 2) // 2
-            burn_in = math.ceil(n_nodes * math.log(n_nodes)) * len(
-                self.stats)  # based on some rough estimates/simulations
+            burn_in = math.ceil(n_nodes * math.log(n_nodes)) * len(self.stats)
+            # above is based on some rough estimates/simulations
         if n_steps is None:
             # n_steps = 10 * (n_nodes ** 2) // 2
             n_steps = math.ceil(n_nodes * math.log(n_nodes)) * len(self.stats)
@@ -161,19 +164,22 @@ class ERGM:
         for step in range(total_steps):
             # assuming the logweight of the current state is already computed, we just need to compute the new values
             # self.current_adj[edge_sequence[0, step], edge_sequence[1, step]] = ~self.current_adj[edge_sequence[0, step], edge_sequence[1, step]]
-            delta_k = self._toggle_current_edge(edge_sequence[0, step], edge_sequence[1, step])
+            # delta_k = self._toggle_current_edge(edge_sequence[0, step], edge_sequence[1, step])
+            delta_k = self.delta_stats(self.current_adj, edge_sequence[0, step], edge_sequence[1, step])
             # self.proposed_stats = self.stats(self.current_adj)
-            self.proposed_stats = self.current_stats - delta_k
+            self.proposed_stats[:] = self.current_stats[:] - delta_k[:]  # the [:] are there to avoid new allocations(?)
             self.proposed_logweight = np.dot(self.proposed_stats, self.theta)
             # p_flip = 1 / (1 + math.exp(self.current_logweight - self.proposed_logweight))
             p_flip = 1 / (1 + math.exp(np.dot(self.theta, delta_k)))
             if urand[step] < p_flip:
-                # keep the flip; save the logweight
+                # flip the edge, save the logweight and stats
+                self._toggle_current_edge(edge_sequence[0, step], edge_sequence[1, step])
                 self.current_stats[:] = self.proposed_stats[:]
                 self.current_logweight = self.proposed_logweight
-            else:
-                # flip the edge back
-                self._toggle_current_edge(edge_sequence[0, step], edge_sequence[1, step])
+                # avoid modifying self.current_adj, which may be sparse, until we're sure we're flipping the edge.
+            # else:
+            #     # flip the edge back
+            #     self._toggle_current_edge(edge_sequence[0, step], edge_sequence[1, step])
             if step >= burn_in and (step - burn_in) % n_steps == 0:
                 sample_num = (step - burn_in) // n_steps
                 if print_logs is not None and (sample_num + 1) % (n_samples // 10) == 0:
@@ -192,15 +198,14 @@ class ERGM:
         :return: None
         """
         # currently assuming a binary adjacency matrix; this may change in the future
-        if self.delta_stats is not None:
-            delta_k = self.delta_stats(self.current_adj, u, v)
-        else:
-            delta_k = self._naive_delta_stats(self.current_adj, u, v)
+        # if self.delta_stats is not None:
+        #     delta_k = self.delta_stats(self.current_adj, u, v)
+        # else:
+        #     delta_k = self._naive_delta_stats(self.current_adj, u, v)
         self.current_adj[u, v] = 1 - self.current_adj[u, v]
-        if not self.directed:
-            self.current_adj[v, u] = 1 - self.current_adj[v, u]
-        return delta_k
-
+        # if not self.directed:
+        #     self.current_adj[v, u] = 1 - self.current_adj[v, u]
+        # return delta_k
 
     def biased_loglikelihood(self, samples):
         """
