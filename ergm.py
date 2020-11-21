@@ -142,11 +142,11 @@ class ERGM:
 
         if burn_in is None:
             # burn_in = 10 * (n_nodes ** 2) // 2
-            burn_in = math.ceil(n_nodes * math.log(n_nodes)) * len(self.stats)
+            burn_in = math.ceil(n_nodes * math.log(n_nodes)) * len(self.theta)
             # above is based on some rough estimates/simulations
         if n_steps is None:
             # n_steps = 10 * (n_nodes ** 2) // 2
-            n_steps = math.ceil(n_nodes * math.log(n_nodes)) * len(self.stats)
+            n_steps = math.ceil(n_nodes * math.log(n_nodes)) * len(self.theta)
 
         log_msg("sample_gibbs: %8d nodes" % n_nodes, out=print_logs)
         log_msg("sample_gibbs: %8d burn-in steps" % burn_in, out=print_logs)
@@ -203,8 +203,8 @@ class ERGM:
         # else:
         #     delta_k = self._naive_delta_stats(self.current_adj, u, v)
         self.current_adj[u, v] = 1 - self.current_adj[u, v]
-        # if not self.directed:
-        #     self.current_adj[v, u] = 1 - self.current_adj[v, u]
+        if not self.directed:
+            self.current_adj[v, u] = 1 - self.current_adj[v, u]
         # return delta_k
 
     def biased_loglikelihood(self, samples):
