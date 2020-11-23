@@ -75,7 +75,7 @@ class ERGM:
         if recompute_current:
             self.current_stats = self.eval_stats(g)
         self._toggle_current_edge(u, v)  # flip the edge
-        new_stats = self.eval_stats(g)
+        new_stats = self.eval_stats(g)   # compute the new stats
         self._toggle_current_edge(u, v)  # flip the edge back
         return self.current_stats - new_stats
 
@@ -106,7 +106,7 @@ class ERGM:
 
     def sample_gibbs(self, n_nodes, n_samples=1, burn_in=None, n_steps=None, g0=None, print_logs=None):
         """
-        Sample from this ensemble, returning a 3d numpy array which is `n_nodes` x `n_nodes` x `n_samples` and a 2d
+        Sample from this ensemble, returning a 3d numpy array which is `n_nodes x n_nodes x n_samples` and a 2d
         numpy array which is `n_nodes x d`, where `d` is the number of statistics. The second array stores the
         statistics of each sample, to avoid recomputing them (e.g. in parameter estimation)
 
@@ -142,7 +142,7 @@ class ERGM:
 
         if burn_in is None:
             # burn_in = 10 * (n_nodes ** 2) // 2
-            burn_in = math.ceil(n_nodes * math.log(n_nodes)) * len(self.theta)
+            burn_in = 2 *  math.ceil(n_nodes * math.log(n_nodes)) * len(self.theta)
             # above is based on some rough estimates/simulations
         if n_steps is None:
             # n_steps = 10 * (n_nodes ** 2) // 2
@@ -328,9 +328,9 @@ class ERGM:
         G_samp = np.zeros((n_nodes, n_nodes, n_estim_samples), dtype=int)
         k_samp = np.zeros((*self.theta.shape, n_estim_samples))
 
-        log_msg(f"{'iter':4} {'|theta(t)|':20} {'|gradient|':20} {'|Delta theta|':20}")
+        log_msg(f"{'iter':4} {'|theta(t)|':20} {'|gradient|':20} {'alpha':20} {'|Delta theta|':20}", out=print_logs)
         stopping_criteria = []
-        stop_iter = 0
+        stop_iter = -1
         for step in range(max_iter):
             try:
                 G_samp[:, :, :], k_samp[:, :] = self.sample_gibbs(n_nodes, n_estim_samples, print_logs=sampler_logs,
@@ -342,7 +342,8 @@ class ERGM:
                 delta_theta[:] = alpha * grad_t[step, :]
 
                 log_msg(
-                    f"{step:4d} {np.linalg.norm(theta_t[step, :]):20.8f} {grad_norm:20.8f} {alpha * grad_norm:20.8f}")
+                    f"{step:4d} {np.linalg.norm(theta_t[step, :]):20.8f} {grad_norm:20.8f} {alpha:20.8f} {alpha * grad_norm:20.8f}",
+                    out=print_logs)
 
                 theta_t[step + 1, :] = theta_t[step, :] + delta_theta
                 self._set_theta(theta_t[step + 1, :], True)
@@ -357,15 +358,20 @@ class ERGM:
                     stopping_criteria.append("grad_norm < x_tol")
                 if len(stopping_criteria) > 0:
                     stop_iter = step
-                    break
+                    # break
             except KeyboardInterrupt:
                 stopping_criteria.append("keyboard interrupt")
                 stop_iter = step - 1
-                break
+                # break
             except Exception as e:
                 stopping_criteria.append("unhandled exception: {}".format(e))
                 stop_iter = step - 1
-                break
+                # break
+            finally:
+                if len(stopping_criteria) > 0:
+                    if stop_iter < 0:
+                        stop_iter = step
+                    break
 
         trajectory = {"theta": theta_t[:stop_iter, :],
                       "expected stats": k_bar_t[:stop_iter, :],
