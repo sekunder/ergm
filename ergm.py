@@ -6,6 +6,7 @@ Classes:
 """
 import numpy as np
 import math
+from scipy import sparse
 
 from util import index_to_edge, log_msg
 
@@ -46,6 +47,14 @@ class ERGM:
         # self.last_evaluated = np.zeros(0)  # maybe will just be a hash; some way of caching computations
 
         self._Z = dict()
+
+    def _initialize_empty_adj(self, n, reset_stats = False):
+        """Initialize self.current_adj to an n x n zeros matrix."""
+        # TODO option for sparse format
+        self.current_adj = np.zeros((n, n))
+        if reset_stats:
+            self.current_stats = self.stats(self.current_adj)
+            self.current_logweight = np.dot(self.current_stats, self.theta)
 
     def eval_stats(self, adj):
         """
@@ -127,9 +136,10 @@ class ERGM:
             pass
         elif g0 is None:
             log_msg("sample_gibbs: using empty graph for initial state", out=print_logs)
-            self.current_adj = np.zeros((n_nodes, n_nodes))
-            self.current_stats = self.stats(self.current_adj)
-            self.current_logweight = np.dot(self.current_stats, self.theta)
+            # self.current_adj = np.zeros((n_nodes, n_nodes))
+            # self.current_stats = self.stats(self.current_adj)
+            # self.current_logweight = np.dot(self.current_stats, self.theta)
+            self._initialize_empty_adj(n_nodes, True)
             self.proposed_stats = np.zeros_like(self.current_stats)
             # self.current_logweight = self.logweight(self.current_adj)
         else:
@@ -142,7 +152,7 @@ class ERGM:
 
         if burn_in is None:
             # burn_in = 10 * (n_nodes ** 2) // 2
-            burn_in = 2 *  math.ceil(n_nodes * math.log(n_nodes)) * len(self.theta)
+            burn_in = 2 * math.ceil(n_nodes * math.log(n_nodes)) * len(self.theta)
             # above is based on some rough estimates/simulations
         if n_steps is None:
             # n_steps = 10 * (n_nodes ** 2) // 2
