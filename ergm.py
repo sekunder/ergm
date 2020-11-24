@@ -116,7 +116,7 @@ class ERGM:
     def sample_gibbs(self, n_nodes, n_samples=1, burn_in=None, n_steps=None, g0=None, print_logs=None):
         """
         Sample from this ensemble, returning a 3d numpy array which is `n_nodes x n_nodes x n_samples` and a 2d
-        numpy array which is `n_nodes x d`, where `d` is the number of statistics. The second array stores the
+        numpy array which is `n_samples x d`, where `d` is the number of statistics. The second array stores the
         statistics of each sample, to avoid recomputing them (e.g. in parameter estimation)
 
         :param n_nodes: Number of nodes in the graph
