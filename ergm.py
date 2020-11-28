@@ -12,7 +12,7 @@ from util import index_to_edge, log_msg
 
 
 class ERGM:
-    def __init__(self, stats, params, delta_stats=None, directed=False):
+    def __init__(self, stats, params, delta_stats=None, directed=False, use_sparse=False):
         """
         Construct an ergm over binary graphs (i.e. edges present or absent) with specified vector of statistics. In
         this ensemble, the probability density function is given by
@@ -33,6 +33,7 @@ class ERGM:
             self.delta_stats = self._naive_delta_stats
         self.theta = np.array(params)
         self.directed = directed
+        self.use_sparse = use_sparse
 
         # some extra bits and bobs
         # self.expected_stats = np.zeros(len(stats))
@@ -46,15 +47,19 @@ class ERGM:
         self.proposed_logweight = 0.0
         # self.last_evaluated = np.zeros(0)  # maybe will just be a hash; some way of caching computations
 
-        self._Z = dict()
+        # self._Z = dict()
 
-    def _initialize_empty_adj(self, n, reset_stats = False):
+    def _initialize_empty_adj(self, n, reset_stats=False, use_sparse=False):
         """Initialize self.current_adj to an n x n zeros matrix."""
         # TODO option for sparse format
-        self.current_adj = np.zeros((n, n))
+        if use_sparse:
+            self.current_adj = sparse.lil_matrix((n,n), dtype=int)
+        else:
+            self.current_adj = np.zeros((n, n), dtype=int)
         if reset_stats:
             self.current_stats = self.stats(self.current_adj)
-            self.current_logweight = np.dot(self.current_stats, self.theta)
+            # self.current_logweight = np.dot(self.current_stats, self.theta)
+            self.current_logweight = self.theta.dot(self.current_stats)
 
     def eval_stats(self, adj):
         """
@@ -103,7 +108,8 @@ class ERGM:
         :return: a float
         """
         # return np.sum([theta * k(adj) for theta, k in zip(self.theta, self.stats)])
-        return np.dot(self.stats(adj), self.theta)
+        # return np.dot(self.stats(adj), self.theta)
+        return self.theta.dot(self.stats(adj))
 
     def hamiltonian(self, adj):
         """
@@ -139,7 +145,7 @@ class ERGM:
             # self.current_adj = np.zeros((n_nodes, n_nodes))
             # self.current_stats = self.stats(self.current_adj)
             # self.current_logweight = np.dot(self.current_stats, self.theta)
-            self._initialize_empty_adj(n_nodes, True)
+            self._initialize_empty_adj(n_nodes, reset_stats=True, use_sparse=self.use_sparse)
             self.proposed_stats = np.zeros_like(self.current_stats)
             # self.current_logweight = self.logweight(self.current_adj)
         else:
@@ -162,7 +168,10 @@ class ERGM:
         log_msg("sample_gibbs: %8d burn-in steps" % burn_in, out=print_logs)
         log_msg("sample_gibbs: %8d steps between samples" % n_steps, out=print_logs)
 
-        samples = np.zeros((n_nodes, n_nodes, n_samples), dtype=int)
+        if self.use_sparse:
+            samples = np.array([sparse.lil_matrix((n_nodes, n_nodes), dtype=int) for _ in range(n_samples)])
+        else:
+            samples = np.zeros((n_nodes, n_nodes, n_samples), dtype=int)
         sample_stats = np.zeros((self.theta.shape[0], n_samples))
         total_steps = burn_in + n_steps * n_samples
         urand = np.random.rand(total_steps)
@@ -178,9 +187,11 @@ class ERGM:
             delta_k = self.delta_stats(self.current_adj, edge_sequence[0, step], edge_sequence[1, step])
             # self.proposed_stats = self.stats(self.current_adj)
             self.proposed_stats[:] = self.current_stats[:] - delta_k[:]  # the [:] are there to avoid new allocations(?)
-            self.proposed_logweight = np.dot(self.proposed_stats, self.theta)
+            # self.proposed_logweight = np.dot(self.proposed_stats, self.theta)
+            self.proposed_logweight = self.theta.dot(self.proposed_stats)
             # p_flip = 1 / (1 + math.exp(self.current_logweight - self.proposed_logweight))
-            p_flip = 1 / (1 + math.exp(np.dot(self.theta, delta_k)))
+            # p_flip = 1 / (1 + math.exp(np.dot(self.theta, delta_k)))
+            p_flip = 1 / (1 + math.exp(self.theta.dot(delta_k)))
             if urand[step] < p_flip:
                 # flip the edge, save the logweight and stats
                 self._toggle_current_edge(edge_sequence[0, step], edge_sequence[1, step])
@@ -191,10 +202,15 @@ class ERGM:
             #     # flip the edge back
             #     self._toggle_current_edge(edge_sequence[0, step], edge_sequence[1, step])
             if step >= burn_in and (step - burn_in) % n_steps == 0:
+                # emit sample
                 sample_num = (step - burn_in) // n_steps
                 if print_logs is not None and (sample_num + 1) % (n_samples // 10) == 0:
                     log_msg("sample_gibbs: emitting sample %8d / %8d" % (sample_num + 1, n_samples), out=print_logs)
-                samples[:, :, sample_num] = self.current_adj[:, :]
+                # samples[:, :, sample_num] = self.current_adj[:, :]
+                if self.use_sparse:
+                    samples[sample_num][:, :] = self.current_adj[:, :]
+                else:
+                    samples[:, :, sample_num] = self.current_adj[:, :]
                 sample_stats[:, sample_num] = self.current_stats[:]
 
         return samples, sample_stats
@@ -208,14 +224,9 @@ class ERGM:
         :return: None
         """
         # currently assuming a binary adjacency matrix; this may change in the future
-        # if self.delta_stats is not None:
-        #     delta_k = self.delta_stats(self.current_adj, u, v)
-        # else:
-        #     delta_k = self._naive_delta_stats(self.current_adj, u, v)
         self.current_adj[u, v] = 1 - self.current_adj[u, v]
         if not self.directed:
             self.current_adj[v, u] = 1 - self.current_adj[v, u]
-        # return delta_k
 
     def biased_loglikelihood(self, samples):
         """
@@ -335,7 +346,13 @@ class ERGM:
         theta_t[0, :] = self.theta  # store initial value of theta
 
         # the sample values at each iteration
-        G_samp = np.zeros((n_nodes, n_nodes, n_estim_samples), dtype=int)
+
+        # The actual sample graphs are not needed, so for now, I'll just ignore them. If they turn out to be useful,
+        # we can sort out how to handle sparse vs. non-sparse ERGMs.
+        # if self.use_sparse:
+        #     G_samp = np.array([sparse.lil_matrix(0) for _ in range(n_estim_samples)])
+        # else:
+        #     G_samp = np.zeros((n_nodes, n_nodes, n_estim_samples), dtype=int)
         k_samp = np.zeros((*self.theta.shape, n_estim_samples))
 
         log_msg(f"{'iter':4} {'|theta(t)|':20} {'|gradient|':20} {'alpha':20} {'|Delta theta|':20}", out=print_logs)
@@ -343,7 +360,7 @@ class ERGM:
         stop_iter = -1
         for step in range(max_iter):
             try:
-                G_samp[:, :, :], k_samp[:, :] = self.sample_gibbs(n_nodes, n_estim_samples, print_logs=sampler_logs,
+                _, k_samp[:, :] = self.sample_gibbs(n_nodes, n_estim_samples, print_logs=sampler_logs,
                                                                   **kwargs)
                 k_bar_t[step, :] = k_samp.mean(axis=1)
                 covar_t[step, :, :] = np.cov(k_samp)
