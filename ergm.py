@@ -152,7 +152,7 @@ class ERGM:
             log_msg("sample_gibbs: using provided adjacency matrix for initial state", out=print_logs)
             self.current_adj = g0
             self.current_stats = self.stats(self.current_adj)
-            self.current_logweight = np.dot(self.current_stats, self.theta)
+            self.current_logweight = self.theta.dot(self.current_stats)
             self.proposed_stats = np.zeros_like(self.current_stats)
             # self.current_logweight = self.logweight(g0)
 
