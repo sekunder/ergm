@@ -158,11 +158,13 @@ class ERGM:
 
         if burn_in is None:
             # burn_in = 10 * (n_nodes ** 2) // 2
-            burn_in = 2 * math.ceil(n_nodes * math.log(n_nodes)) * len(self.theta)
+            burn_in = 3 * int(math.ceil(n_nodes * math.log(n_nodes))) * len(self.theta)
             # above is based on some rough estimates/simulations
         if n_steps is None:
             # n_steps = 10 * (n_nodes ** 2) // 2
-            n_steps = math.ceil(n_nodes * math.log(n_nodes)) * len(self.theta)
+            n_steps = int(math.ceil(math.log(n_nodes))) * len(self.theta) * 2.5
+
+        burn_in = int(burn_in)
 
         log_msg("sample_gibbs: %8d nodes" % n_nodes, out=print_logs)
         log_msg("sample_gibbs: %8d burn-in steps" % burn_in, out=print_logs)
