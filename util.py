@@ -5,6 +5,10 @@ import numpy as np
 import datetime
 import sys
 
+import networkx as nx
+
+
+# from scipy import sparse
 
 def log_msg(*args, out=sys.stdout, **kwargs):
     """Print message m with a timestamp if out is not None."""
@@ -66,3 +70,20 @@ def ellipse(center, v1, v2, resolution=10):
     x = center[0] + np.cos(ls) * v1[0] + np.sin(ls) * v2[0]
     y = center[1] + np.cos(ls) * v1[1] + np.sin(ls) * v2[1]
     return x, y
+
+
+def networkx_graph_to_sparse_array(g):
+    """
+    Convert networkx graph g into a binary matrix with 0s on the diagonal. Entry `i,j` indicates whether there is an
+    edge from node `i` to node `j`. Indices are the order in which nodes are returned from `g.nodes`.
+
+    This will generate a warning as it involves manually setting the diagonal to 0, which changes the sparsity
+    structure of the matrix.
+
+    :param g: `networkx` graph
+    :return: a CSR sparse matrix
+    """
+    sg = nx.convert_matrix.to_scipy_sparse_matrix(g, dtype=int, weight=None)
+    sg.data = np.ones_like(sg.data)
+    sg.setdiag(sg.diagonal() * 0)
+    return sg

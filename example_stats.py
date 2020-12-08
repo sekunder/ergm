@@ -33,15 +33,16 @@ def u_delta_edge_triangle_density(g, u, v):
 
 def d_connected_triplet_motif_density(g):
     """
-    Return the uncorrected density of connected triplet motifs.
+    Return the uncorrected density of connected triplet motifs. "Uncorrected" means this function counts subgraphs
+    isomorphic to each three-node motif, not *induced* subgraphs. To "correct" the output, do the following:
 
-    !!! Correction will be implemented eventually
+    ```
+    uncorrected_densities = d_connected_triplet_motif_density(g)
+    corrected_densities = triplet_over_to_exact.dot(uncorrected_densities)
+    ```
 
     :param g: Adjacency matrix (possibly sparse)
-    :return: vector of 15 (uncorrected) motif counts of all triplet motifs
-
-    "Uncorrected" means, e.g. the first entry is the edge density, rather than the number of triplets with a single
-    edge. This function counts subgraphs isomorphic to the 3-node motifs, not induced subgraphs.
+    :return: vector of 15 (uncorrected) motif counts of all nonempty triplet motifs
     """
     # TODO put some thought into efficiently allocating memory/matrix operations
     n = g.shape[0]
@@ -49,9 +50,9 @@ def d_connected_triplet_motif_density(g):
     num_edges = g.sum()
     g_squared = g.dot(g)
     tr_g_sq = g_squared.diagonal().sum()  # works with sparse matrices, not with numpy arrays?
-
-    counts[0] = n * num_edges  # scale by n since everything is getting divided by n^3
-    counts[1] = n * tr_g_sq / 2
+    
+    counts[0] = (n - 2) * num_edges  # (over)counts triplets of nodes with at least 1 edge
+    counts[1] = (n - 2) * tr_g_sq / 2  # (over)counts triplets of nodes with at least 1 recip
     counts[2] = (g_squared.sum() - tr_g_sq)
 
     diverging = (g.T).dot(g)  # ATA, common pre
@@ -76,7 +77,7 @@ def d_connected_triplet_motif_density(g):
     counts[13] = g_sym_squared.multiply(g).sum()
     counts[14] = g_sym_squared.dot(g_sym).diagonal().sum() / 6
 
-    return counts / (n ** 3)
+    return 6 * counts / (n * (n - 1) * (n - 2))
 
 
 def d_delta_connected_triplet_motif_density(g, u, v):
@@ -90,8 +91,8 @@ def d_delta_connected_triplet_motif_density(g, u, v):
     n = g.shape[0]
     Duv = 2 * g[u, v] - 1
     delta = np.zeros(15)  # delta will get multiplied by Duv at the end
-    delta[0] = n  # scale factor from definition above
-    delta[1] = n * g[v, u]
+    delta[0] = n - 2  # scale factor from definition above
+    delta[1] = (n - 2) * g[v, u]
 
     outu = g[u, :].sum()
     inu = g[:, u].sum()
@@ -123,4 +124,27 @@ def d_delta_connected_triplet_motif_density(g, u, v):
                     g[u, :].dot(common_pre)[0, 0] + g[v, :].dot(common_pre)[0, 0]
         delta[14] = common_post.dot(common_pre)[0, 0]
 
-    return Duv * delta / (n ** 3)
+    return 6 * Duv * delta / (n * (n - 1) * (n - 2))
+
+S_string = [
+    "122223333444456",  # 0
+    "010000011111223",  # 1
+    "001001311232246",  # 2
+    "000101010211123",  # 3
+    "000011001112123",  # 4 
+    "000001000212036",  # 5
+    "000000100010012",  # 6
+    "000000010210236",  # 7
+    "000000001012236",  # 8
+    "000000000100013",  # 9
+    "000000000010026",  #10
+    "000000000001013",  #11
+    "000000000000113",  #12
+    "000000000000016",  #13
+    "000000000000001"]  #14
+# automorphisms = [1, 2, 1, 2, 2, 3, 1, 1, 1, 2, 1, 2, 2, 1, 6]
+# triplet_exact_to_over = np.array([[int(d) * automorphisms[i] for d in s] for i,s in enumerate(S_string)])
+triplet_exact_to_over = np.array([[int(d) for d in s] for i,s in enumerate(S_string)])
+# print(triplet_exact_to_over)
+triplet_over_to_exact = np.linalg.inv(triplet_exact_to_over).astype(int)
+# print(triplet_over_to_exact)
