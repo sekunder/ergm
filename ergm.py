@@ -303,7 +303,8 @@ class ERGM:
         # currently just a wrapper for _MLE_sampler
         return self._MLE_sampler(observed, **kwargs)
 
-    def _MLE_sampler(self, observed, n_estim_samples=100, alpha=1, alpha_rate=0.999, max_iter=1000, x_tol=1e-8,
+    def _MLE_sampler(self, observed, n_estim_samples=100,
+                     alpha=1, alpha_rate=0.999, max_iter=1000, x_tol=1e-8,
                      print_logs=None, sampler_logs=None, **kwargs):
         """
         Compute the maximum likelihood estimate (MLE) of parameters for the observed data using gradient ascent on
@@ -323,7 +324,11 @@ class ERGM:
             k_obs = self.stats(observed)
             log_msg("MLE_sampler: Passed single graph; observed stats:\n", k_obs, out=print_logs)
         else:
-            all_obs_k = np.array([self.stats(observed[:, :, i]) for i in range(observed.shape[2])])
+            try:
+                all_obs_k = np.array([self.stats(observed[:, :, i]) for i in range(observed.shape[2])])
+            except:
+                # if sparse arrays were used, observed will be an array of sparse matrices
+                all_obs_k = np.array([self.stats(observed[i].tocsr()) for i in range(observed.shape[0])])
             k_obs = all_obs_k.mean(axis=0)
             log_msg("MLE_sampler: Computed stats, resulting shape:", all_obs_k.shape, out=print_logs)
             log_msg("MLE_sampler: average stats:", k_obs, out=print_logs)
