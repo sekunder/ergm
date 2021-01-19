@@ -87,3 +87,7 @@ def networkx_graph_to_sparse_array(g):
     sg.data = np.ones_like(sg.data)
     sg.setdiag(sg.diagonal() * 0)
     return sg
+
+
+def flatten(t):
+    return [item for sublist in t for item in sublist]
