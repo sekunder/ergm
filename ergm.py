@@ -162,7 +162,7 @@ class ERGM:
             # above is based on some rough estimates/simulations
         if n_steps is None:
             # n_steps = 10 * (n_nodes ** 2) // 2
-            n_steps = int(math.ceil(math.log(n_nodes))) * len(self.theta) * 2.5
+            n_steps = int(math.ceil(math.log(n_nodes))) * len(self.theta) * 2
 
         burn_in = int(burn_in)
 
