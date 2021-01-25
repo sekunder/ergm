@@ -49,13 +49,9 @@ class ERGM:
 
         # self._Z = dict()
 
-    def _initialize_dense_adj(self, n, reset_stats=False, use_sparse=False):
-        """Initialize self.current_adj to an n x n zeros matrix."""
-        # TODO option for sparse format
-        if use_sparse:
-            self.current_adj = sparse.lil_matrix((n,n), dtype=int)
-        else:
-            self.current_adj = np.zeros((n, n), dtype=int)
+    def _initialize_dense_adj(self, n, reset_stats=False):
+        """Initialize self.current_adj to an `n x n` zeros matrix."""
+        self.current_adj = np.zeros((n, n), dtype=int)
         if reset_stats:
             self.current_stats = self.stats(self.current_adj)
             # self.current_logweight = np.dot(self.current_stats, self.theta)
@@ -196,7 +192,10 @@ class ERGM:
             # self.current_adj = np.zeros((n_nodes, n_nodes))
             # self.current_stats = self.stats(self.current_adj)
             # self.current_logweight = np.dot(self.current_stats, self.theta)
-            self._initialize_dense_adj(n_nodes, reset_stats=True, use_sparse=self.use_sparse)
+            if self.use_sparse:
+                self._initialize_sparse_adj(self, n_nodes)
+            else:
+                self._initialize_dense_adj(n_nodes, reset_stats=True)
             self.proposed_stats = np.zeros_like(self.current_stats)
             # self.current_logweight = self.logweight(self.current_adj)
         else:
