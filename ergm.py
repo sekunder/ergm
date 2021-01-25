@@ -60,6 +60,42 @@ class ERGM:
             self.current_stats = self.stats(self.current_adj)
             # self.current_logweight = np.dot(self.current_stats, self.theta)
             self.current_logweight = self.theta.dot(self.current_stats)
+    
+    def _initialize_sparse_adj(self, n, prealloc_coords=None, prealloc_data=None, reset_stats=True):
+        """
+        Initialize self.current_adj as a sparse matrix with preallocated structure, if specified.
+        Specifying a structure will speed up the sampling, since every time an edge is toggled,
+        it won't have to reallocate space for the underlying data of the matrix.
+
+        :param n: Number of nodes; generates
+
+        :param prealloc_coords: The matrix coordinates which are to be explicitly stored (even if they are zeros).
+            Passed as a `2 x m` numpy array, where `m` is the number of preallocated edges.
+
+        :param prealloc_data: The data to be stored in the matrix (if None, defaults to zeros)
+
+        :param reset_stats: If true, compute the statistics of the new matrix and save the results (default True)
+
+        :return: Does not return anything; modifies the internal state of the object
+        """
+        if prealloc_coords is None:
+            self.current_adj = sparse.csr_matrix((n, n), dtype=int)  # set up an empty matrix
+        else:
+            m = prealloc_coords.shape[1]
+            if prealloc_data is None:
+                prealloc_data = np.zeros(m, dtype=int)
+            self.current_adj = sparse.csr((prealloc_data, (prealloc_coords[0], prealloc_coords[1])), shape=(n, n))
+        if reset_stats:
+            self.current_stats = self.stats(self.current_adj)
+            self.current_logweight = self.theta.dot(self.current_stats)
+
+    def _sparse_adj_drop_zeros(self):
+        """
+        Compress the current adjacency matrix by dropping the explicit 0s stored in the data.
+        """
+        # turns out there's an in-place function for this!
+        self.current_adj.eliminate_zeros()
+
 
     def eval_stats(self, adj):
         """
@@ -146,6 +182,7 @@ class ERGM:
             # self.current_stats = self.stats(self.current_adj)
             # self.current_logweight = np.dot(self.current_stats, self.theta)
             self._initialize_empty_adj(n_nodes, reset_stats=True, use_sparse=self.use_sparse)
+            self._initialize_dense_adj(n_nodes, reset_stats=True, use_sparse=self.use_sparse)
             self.proposed_stats = np.zeros_like(self.current_stats)
             # self.current_logweight = self.logweight(self.current_adj)
         else:
