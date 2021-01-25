@@ -49,7 +49,7 @@ class ERGM:
 
         # self._Z = dict()
 
-    def _initialize_empty_adj(self, n, reset_stats=False, use_sparse=False):
+    def _initialize_dense_adj(self, n, reset_stats=False, use_sparse=False):
         """Initialize self.current_adj to an n x n zeros matrix."""
         # TODO option for sparse format
         if use_sparse:
@@ -96,6 +96,21 @@ class ERGM:
         # turns out there's an in-place function for this!
         self.current_adj.eliminate_zeros()
 
+    def _sparse_adj_add_zeros(self, alloc_coords, alloc_data=None):
+        """
+        Allocate space for the specified data in the specified locations, storing explicit zeros if need be.
+        :param alloc_coords: A `2 x m` numpy array of matrix indices to allocate
+        :param alloc_data: Data
+        :return:
+        """
+        cur_shape = self.current_adj.shape()
+        I,J,V = sparse.find(self.current_adj)
+        # csr_matrix((data, (row_ind, col_ind)), [shape=(M, N)])
+        if alloc_data is None:
+            alloc_data = np.zeros(alloc_coords.shape[1])
+        self.current_adj = sparse.csr_matrix((np.stack(V, alloc_data),
+                                              (np.stack(I, alloc_coords[0]), np.stack(J, alloc_coords[1]))),
+                                             shape=cur_shape)
 
     def eval_stats(self, adj):
         """
@@ -181,7 +196,6 @@ class ERGM:
             # self.current_adj = np.zeros((n_nodes, n_nodes))
             # self.current_stats = self.stats(self.current_adj)
             # self.current_logweight = np.dot(self.current_stats, self.theta)
-            self._initialize_empty_adj(n_nodes, reset_stats=True, use_sparse=self.use_sparse)
             self._initialize_dense_adj(n_nodes, reset_stats=True, use_sparse=self.use_sparse)
             self.proposed_stats = np.zeros_like(self.current_stats)
             # self.current_logweight = self.logweight(self.current_adj)
