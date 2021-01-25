@@ -192,8 +192,9 @@ class ERGM:
             # self.current_adj = np.zeros((n_nodes, n_nodes))
             # self.current_stats = self.stats(self.current_adj)
             # self.current_logweight = np.dot(self.current_stats, self.theta)
+            # TODO enable random initialization
             if self.use_sparse:
-                self._initialize_sparse_adj(self, n_nodes)
+                self._initialize_sparse_adj(self, n_nodes, reset_stats=True)
             else:
                 self._initialize_dense_adj(n_nodes, reset_stats=True)
             self.proposed_stats = np.zeros_like(self.current_stats)
@@ -221,28 +222,22 @@ class ERGM:
         log_msg("sample_gibbs: %8d steps between samples" % n_steps, out=print_logs)
 
         if self.use_sparse:
-            samples = np.array([sparse.lil_matrix((n_nodes, n_nodes), dtype=int) for _ in range(n_samples)])
+            samples = np.array([sparse.csr_matrix((n_nodes, n_nodes), dtype=int) for _ in range(n_samples)])
         else:
             samples = np.zeros((n_nodes, n_nodes, n_samples), dtype=int)
         sample_stats = np.zeros((self.theta.shape[0], n_samples))
         total_steps = burn_in + n_steps * n_samples
         urand = np.random.rand(total_steps)
-        edge_sequence = index_to_edge(np.random.choice(range(n_nodes * (n_nodes - 1) // (1 + (not self.directed))),
-                                                       size=total_steps, replace=True),
-                                      n_nodes, self.directed)
+        rand_indexes = np.random.choice(range(n_nodes * (n_nodes - 1) // (1 + (not self.directed))), size=total_steps,
+                                        replace=True)
+        edge_sequence = index_to_edge(rand_indexes, n_nodes, self.directed)
 
         log_msg("sample_gibbs: beginning MCMC process", out=print_logs)
         for step in range(total_steps):
             # assuming the logweight of the current state is already computed, we just need to compute the new values
-            # self.current_adj[edge_sequence[0, step], edge_sequence[1, step]] = ~self.current_adj[edge_sequence[0, step], edge_sequence[1, step]]
-            # delta_k = self._toggle_current_edge(edge_sequence[0, step], edge_sequence[1, step])
             delta_k = self.delta_stats(self.current_adj, edge_sequence[0, step], edge_sequence[1, step])
-            # self.proposed_stats = self.stats(self.current_adj)
             self.proposed_stats[:] = self.current_stats[:] - delta_k[:]  # the [:] are there to avoid new allocations(?)
-            # self.proposed_logweight = np.dot(self.proposed_stats, self.theta)
             self.proposed_logweight = self.theta.dot(self.proposed_stats)
-            # p_flip = 1 / (1 + math.exp(self.current_logweight - self.proposed_logweight))
-            # p_flip = 1 / (1 + math.exp(np.dot(self.theta, delta_k)))
             p_flip = 1 / (1 + math.exp(self.theta.dot(delta_k)))
             if urand[step] < p_flip:
                 # flip the edge, save the logweight and stats
@@ -250,9 +245,6 @@ class ERGM:
                 self.current_stats[:] = self.proposed_stats[:]
                 self.current_logweight = self.proposed_logweight
                 # avoid modifying self.current_adj, which may be sparse, until we're sure we're flipping the edge.
-            # else:
-            #     # flip the edge back
-            #     self._toggle_current_edge(edge_sequence[0, step], edge_sequence[1, step])
             if step >= burn_in and (step - burn_in) % n_steps == 0:
                 # emit sample
                 sample_num = (step - burn_in) // n_steps
