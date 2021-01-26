@@ -182,6 +182,31 @@ class ERGM:
 
         This method uses Gibbs sampling.
         """
+        # Set up number of steps, output array, etc.
+        if burn_in is None:
+            # burn_in = 10 * (n_nodes ** 2) // 2
+            burn_in = 3 * int(math.ceil(n_nodes * math.log(n_nodes))) * len(self.theta)
+            # above is based on some rough estimates/simulations
+        if n_steps is None:
+            # n_steps = 10 * (n_nodes ** 2) // 2
+            n_steps = int(math.ceil(math.log(n_nodes))) * len(self.theta) * 2
+
+        log_msg("sample_gibbs: %8d nodes" % n_nodes, out=print_logs)
+        log_msg("sample_gibbs: %8d burn-in steps" % burn_in, out=print_logs)
+        log_msg("sample_gibbs: %8d steps between samples" % n_steps, out=print_logs)
+
+        if self.use_sparse:
+            samples = np.array([sparse.csr_matrix((n_nodes, n_nodes), dtype=int) for _ in range(n_samples)])
+        else:
+            samples = np.zeros((n_nodes, n_nodes, n_samples), dtype=int)
+        sample_stats = np.zeros((self.theta.shape[0], n_samples))
+        total_steps = burn_in + n_steps * n_samples
+
+        urand = np.random.rand(total_steps)
+        rand_indexes = np.random.choice(range(n_nodes * (n_nodes - 1) // (1 + (not self.directed))), size=total_steps,
+                                        replace=True)
+        edge_sequence = index_to_edge(rand_indexes, n_nodes, self.directed)
+
         # TODO write up some details on the internals of this method in the docstring
         if g0 is None and self.current_adj.shape[0] == n_nodes:
             log_msg("sample_gibbs: previous adjacency matrix found", out=print_logs)
@@ -194,7 +219,7 @@ class ERGM:
             # self.current_logweight = np.dot(self.current_stats, self.theta)
             # TODO enable random initialization
             if self.use_sparse:
-                self._initialize_sparse_adj(self, n_nodes, reset_stats=True)
+                self._initialize_sparse_adj(self, n_nodes, edge_sequence, reset_stats=True)
             else:
                 self._initialize_dense_adj(n_nodes, reset_stats=True)
             self.proposed_stats = np.zeros_like(self.current_stats)
@@ -207,30 +232,8 @@ class ERGM:
             self.proposed_stats = np.zeros_like(self.current_stats)
             # self.current_logweight = self.logweight(g0)
 
-        if burn_in is None:
-            # burn_in = 10 * (n_nodes ** 2) // 2
-            burn_in = 3 * int(math.ceil(n_nodes * math.log(n_nodes))) * len(self.theta)
-            # above is based on some rough estimates/simulations
-        if n_steps is None:
-            # n_steps = 10 * (n_nodes ** 2) // 2
-            n_steps = int(math.ceil(math.log(n_nodes))) * len(self.theta) * 2
 
-        burn_in = int(burn_in)
 
-        log_msg("sample_gibbs: %8d nodes" % n_nodes, out=print_logs)
-        log_msg("sample_gibbs: %8d burn-in steps" % burn_in, out=print_logs)
-        log_msg("sample_gibbs: %8d steps between samples" % n_steps, out=print_logs)
-
-        if self.use_sparse:
-            samples = np.array([sparse.csr_matrix((n_nodes, n_nodes), dtype=int) for _ in range(n_samples)])
-        else:
-            samples = np.zeros((n_nodes, n_nodes, n_samples), dtype=int)
-        sample_stats = np.zeros((self.theta.shape[0], n_samples))
-        total_steps = burn_in + n_steps * n_samples
-        urand = np.random.rand(total_steps)
-        rand_indexes = np.random.choice(range(n_nodes * (n_nodes - 1) // (1 + (not self.directed))), size=total_steps,
-                                        replace=True)
-        edge_sequence = index_to_edge(rand_indexes, n_nodes, self.directed)
 
         log_msg("sample_gibbs: beginning MCMC process", out=print_logs)
         for step in range(total_steps):
@@ -252,7 +255,8 @@ class ERGM:
                     log_msg("sample_gibbs: emitting sample %8d / %8d" % (sample_num + 1, n_samples), out=print_logs)
                 # samples[:, :, sample_num] = self.current_adj[:, :]
                 if self.use_sparse:
-                    samples[sample_num][:, :] = self.current_adj[:, :]
+                    # samples[sample_num][:, :] = self.current_adj[:, :]
+                    samples[sample_num] = self.current_adj.copy()
                 else:
                     samples[:, :, sample_num] = self.current_adj[:, :]
                 sample_stats[:, sample_num] = self.current_stats[:]
