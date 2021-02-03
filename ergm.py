@@ -4,6 +4,8 @@ a pure-python implementation of exponential random graph models (ERGMs). Adapted
 Classes:
     ergm: uses adjacency matrix representation for graphs
 """
+import time
+
 import numpy as np
 import math
 from scipy import sparse
@@ -80,7 +82,7 @@ class ERGM:
             m = prealloc_coords.shape[1]
             if prealloc_data is None:
                 prealloc_data = np.zeros(m, dtype=int)
-            self.current_adj = sparse.csr((prealloc_data, (prealloc_coords[0], prealloc_coords[1])), shape=(n, n))
+            self.current_adj = sparse.csr_matrix((prealloc_data, (prealloc_coords[0], prealloc_coords[1])), shape=(n, n))
         if reset_stats:
             self.current_stats = self.stats(self.current_adj)
             self.current_logweight = self.theta.dot(self.current_stats)
@@ -169,7 +171,7 @@ class ERGM:
     def sample_gibbs(self, n_nodes, n_samples=1, burn_in=None, n_steps=None, g0=None, print_logs=None):
         """
         Sample from this ensemble, returning a 3d numpy array which is `n_nodes x n_nodes x n_samples` and a 2d
-        numpy array which is `n_samples x d`, where `d` is the number of statistics. The second array stores the
+        numpy array which is `d x n_samples`, where `d` is the number of statistics. The second array stores the
         statistics of each sample, to avoid recomputing them (e.g. in parameter estimation)
 
         :param n_nodes: Number of nodes in the graph
@@ -182,36 +184,37 @@ class ERGM:
 
         This method uses Gibbs sampling.
         """
-        # Set up number of steps, output array, etc.
+        # TODO write up some details on the internals of this method in the docstring
+        
+        # Compute number of steps this MC will take
         if burn_in is None:
-            # burn_in = 10 * (n_nodes ** 2) // 2
-            burn_in = 3 * int(math.ceil(n_nodes * math.log(n_nodes))) * len(self.theta)
+            if self.current_adj.shape[0] == n_nodes:
+                burn_in = 0
+            else:
+                burn_in = 3 * int(math.ceil(n_nodes * math.log(n_nodes))) * len(self.theta)
             # above is based on some rough estimates/simulations
         if n_steps is None:
-            # n_steps = 10 * (n_nodes ** 2) // 2
             n_steps = int(math.ceil(math.log(n_nodes))) * len(self.theta) * 2
+        total_steps = burn_in + n_steps * n_samples  # total steps taken by markov chain
 
-        log_msg("sample_gibbs: %8d nodes" % n_nodes, out=print_logs)
-        log_msg("sample_gibbs: %8d burn-in steps" % burn_in, out=print_logs)
-        log_msg("sample_gibbs: %8d steps between samples" % n_steps, out=print_logs)
-
+        # initialize output arrays
         if self.use_sparse:
             samples = np.array([sparse.csr_matrix((n_nodes, n_nodes), dtype=int) for _ in range(n_samples)])
         else:
             samples = np.zeros((n_nodes, n_nodes, n_samples), dtype=int)
         sample_stats = np.zeros((self.theta.shape[0], n_samples))
-        total_steps = burn_in + n_steps * n_samples
 
+        # determine the sequence of edges to visit
         urand = np.random.rand(total_steps)
         rand_indexes = np.random.choice(range(n_nodes * (n_nodes - 1) // (1 + (not self.directed))), size=total_steps,
                                         replace=True)
         edge_sequence = index_to_edge(rand_indexes, n_nodes, self.directed)
+        # TODO There might be a way to speed up indexing into a CSR matrix by reformatting the edge sequence
 
-        # TODO write up some details on the internals of this method in the docstring
         if g0 is None and self.current_adj.shape[0] == n_nodes:
             log_msg("sample_gibbs: previous adjacency matrix found", out=print_logs)
-            burn_in = 0  # we're picking up where we left off
-            pass
+            # burn_in = 0  # we're picking up where we left off
+            # pass
         elif g0 is None:
             log_msg("sample_gibbs: using empty graph for initial state", out=print_logs)
             # self.current_adj = np.zeros((n_nodes, n_nodes))
@@ -219,7 +222,7 @@ class ERGM:
             # self.current_logweight = np.dot(self.current_stats, self.theta)
             # TODO enable random initialization
             if self.use_sparse:
-                self._initialize_sparse_adj(self, n_nodes, edge_sequence, reset_stats=True)
+                self._initialize_sparse_adj(n_nodes, edge_sequence, reset_stats=True)
             else:
                 self._initialize_dense_adj(n_nodes, reset_stats=True)
             self.proposed_stats = np.zeros_like(self.current_stats)
@@ -232,10 +235,14 @@ class ERGM:
             self.proposed_stats = np.zeros_like(self.current_stats)
             # self.current_logweight = self.logweight(g0)
 
-
+        log_msg("sample_gibbs: %8d nodes" % n_nodes, out=print_logs)
+        log_msg("sample_gibbs: %8d burn-in steps" % burn_in, out=print_logs)
+        log_msg("sample_gibbs: %8d steps between samples" % n_steps, out=print_logs)
+        log_msg("sample_gibbs: %8d total steps" % total_steps, out=print_logs)
 
 
         log_msg("sample_gibbs: beginning MCMC process", out=print_logs)
+        t_start = time.time()
         for step in range(total_steps):
             # assuming the logweight of the current state is already computed, we just need to compute the new values
             delta_k = self.delta_stats(self.current_adj, edge_sequence[0, step], edge_sequence[1, step])
@@ -260,6 +267,8 @@ class ERGM:
                 else:
                     samples[:, :, sample_num] = self.current_adj[:, :]
                 sample_stats[:, sample_num] = self.current_stats[:]
+        t_end = time.time()
+        log_msg("sample_gibbs: Sampling finished in", t_end - t_start, "s", out=print_logs)
 
         return samples, sample_stats
 
