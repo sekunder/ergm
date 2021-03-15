@@ -19,9 +19,9 @@ class ERGM:
         Construct an ergm over binary graphs (i.e. edges present or absent) with specified vector of statistics. In
         this ensemble, the probability density function is given by
 
-        $$ P(G | \theta) = \frac{1}{Z} exp(\sum_a k_a(G) \theta_a) $$
+        $$ P(G | \\theta) = \\frac{1}{Z} exp(\\sum_a k_a(G) \\theta_a) $$
 
-        where the functions $k_a$ are the components of `stats`, the coefficients $\theta_a$ are specified by `params`.
+        where the functions $k_a$ are the components of `stats`, the coefficients $\\theta_a$ are specified by `params`.
 
         :param stats: a function which takes a graph as an argument and returns a vector of statistics
         :param params: an iterable of numerical values.
@@ -58,7 +58,7 @@ class ERGM:
             self.current_stats = self.stats(self.current_adj)
             # self.current_logweight = np.dot(self.current_stats, self.theta)
             self.current_logweight = self.theta.dot(self.current_stats)
-    
+
     def _initialize_sparse_adj(self, n, prealloc_coords=None, prealloc_data=None, reset_stats=True):
         """
         Initialize self.current_adj as a sparse matrix with preallocated structure, if specified.
@@ -102,7 +102,7 @@ class ERGM:
         :return:
         """
         cur_shape = self.current_adj.shape()
-        I,J,V = sparse.find(self.current_adj)
+        I, J, V = sparse.find(self.current_adj)
         # csr_matrix((data, (row_ind, col_ind)), [shape=(M, N)])
         if alloc_data is None:
             alloc_data = np.zeros(alloc_coords.shape[1])
@@ -185,7 +185,7 @@ class ERGM:
         This method uses Gibbs sampling.
         """
         # TODO write up some details on the internals of this method in the docstring
-        
+
         # Compute number of steps this MC will take
         if burn_in is None:
             if self.current_adj.shape[0] == n_nodes:
@@ -239,7 +239,6 @@ class ERGM:
         log_msg("sample_gibbs: %8d burn-in steps" % burn_in, out=print_logs)
         log_msg("sample_gibbs: %8d steps between samples" % n_steps, out=print_logs)
         log_msg("sample_gibbs: %8d total steps" % total_steps, out=print_logs)
-
 
         log_msg("sample_gibbs: beginning MCMC process", out=print_logs)
         t_start = time.time()
@@ -423,7 +422,7 @@ class ERGM:
         for step in range(max_iter):
             try:
                 _, k_samp[:, :] = self.sample_gibbs(n_nodes, n_estim_samples, print_logs=sampler_logs,
-                                                                  **kwargs)
+                                                    **kwargs)
                 k_bar_t[step, :] = k_samp.mean(axis=1)
                 covar_t[step, :, :] = np.cov(k_samp)
                 grad_t[step, :] = k_obs - k_bar_t[step, :]

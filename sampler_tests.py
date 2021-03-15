@@ -1,11 +1,10 @@
 """Testing the functionality of the ergm package"""
 
-import datetime
 import sys
 import time
 
-import networkx as nx
 import numpy as np
+import networkx as nx
 
 from ergm import ERGM
 from util import log_msg
@@ -27,7 +26,7 @@ log_msg("Producing {} samples with {} nodes".format(n_samples, n_nodes))
 log_msg("Using seed {} for numpy; using 17 * k for nx random graphs".format(seed))
 
 nx_ER_start = time.time()
-nx_ER_list = [nx.gnp_random_graph(n_nodes, p0, seed=17*k) for k in range(n_samples)]
+nx_ER_list = [nx.gnp_random_graph(n_nodes, p0, seed=17 * k) for k in range(n_samples)]
 nx_ER_end = time.time()
 
 log_msg("Elapsed time:", nx_ER_end - nx_ER_start, "s")
@@ -88,7 +87,7 @@ log_msg("Now testing larger graphs, n =", n_large)
 
 log_msg("Networkx fast_gnp_random_graph with p =", p0)
 nx_ER_large_start = time.time()
-nx_ER_large_list = [nx.fast_gnp_random_graph(n_large, p0, seed=17*k) for k in range(n_samples)]
+nx_ER_large_list = [nx.fast_gnp_random_graph(n_large, p0, seed=17 * k) for k in range(n_samples)]
 nx_ER_large_end = time.time()
 
 log_msg("Elapsed time:", nx_ER_large_end - nx_ER_large_start, "s")
@@ -107,7 +106,7 @@ ergm_ER_large_start = time.time()
 # fs = [lambda g: np.sum(g) / 2]  # undirected graph has symmetric adjacency matrix!
 # ergm_ER_large_model = ERGM(lambda g: np.array([np.sum(g) / 2]), [np.log(p0 / (1 - p0))], directed=False)
 ergm_ER_large_samples, _ = ergm_ER_model.sample_gibbs(n_large, n_samples, print_logs=sys.stdout, burn_in=200, n_steps=200,
-                                                   g0=g0)
+                                                      g0=g0)
 ergm_ER_large_end = time.time()
 
 log_msg("Elapsed time:", ergm_ER_large_end - ergm_ER_large_start, "s")
