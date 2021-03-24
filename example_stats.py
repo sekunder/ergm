@@ -3,7 +3,6 @@
 Function names that begin with `u_` or `d_` only work on undirected or directed graphs, respectively; if there is no
 prefix the function will return the correct value in either case. """
 import numpy as np
-from scipy import sparse
 
 
 def u_num_edges(g):
@@ -50,10 +49,10 @@ def d_connected_triplet_motif_density(g):
     num_edges = g.sum()
     g_squared = g.dot(g)
     tr_g_sq = g_squared.diagonal().sum()  # works with sparse matrices, not with numpy arrays?
-    
+
     counts[0] = (n - 2) * num_edges  # (over)counts triplets of nodes with at least 1 edge
     counts[1] = (n - 2) * tr_g_sq / 2  # (over)counts triplets of nodes with at least 1 recip
-    counts[2] = (g_squared.sum() - tr_g_sq)
+    counts[2] = (g_squared.sum() - tr_g_sq)  # sum of off-diagonal elements of A^2
 
     diverging = (g.T).dot(g)  # ATA, common pre
     converging = g.dot(g.T)  # AAT, common post
@@ -121,40 +120,42 @@ def d_delta_connected_triplet_motif_density(g, u, v):
     if g[v, u] != 0:
         delta[10] = delta[10] + g[u, :].dot(g[:, v])[0, 0] + g[v, :].dot(g[:, u])[0, 0]
         delta[13] = delta[13] + common_post.dot(g[:, v])[0, 0] + common_post.dot(g[:, u])[0, 0] + \
-                    g[u, :].dot(common_pre)[0, 0] + g[v, :].dot(common_pre)[0, 0]
+            g[u, :].dot(common_pre)[0, 0] + g[v, :].dot(common_pre)[0, 0]
         delta[14] = common_post.dot(common_pre)[0, 0]
 
     return 6 * Duv * delta / (n * (n - 1) * (n - 2))
+
 
 S_string = [
     "122223333444456",  # 0
     "010000011111223",  # 1
     "001001311232246",  # 2
     "000101010211123",  # 3
-    "000011001112123",  # 4 
+    "000011001112123",  # 4
     "000001000212036",  # 5
     "000000100010012",  # 6
     "000000010210236",  # 7
     "000000001012236",  # 8
     "000000000100013",  # 9
-    "000000000010026",  #10
-    "000000000001013",  #11
-    "000000000000113",  #12
-    "000000000000016",  #13
-    "000000000000001"]  #14
+    "000000000010026",  # 10
+    "000000000001013",  # 11
+    "000000000000113",  # 12
+    "000000000000016",  # 13
+    "000000000000001"]  # 14
 # automorphisms = [1, 2, 1, 2, 2, 3, 1, 1, 1, 2, 1, 2, 2, 1, 6]
 # triplet_exact_to_over = np.array([[int(d) * automorphisms[i] for d in s] for i,s in enumerate(S_string)])
-triplet_exact_to_over = np.array([[int(d) for d in s] for i,s in enumerate(S_string)])
+triplet_exact_to_over = np.array([[int(d) for d in s] for i, s in enumerate(S_string)])
 # print(triplet_exact_to_over)
 triplet_over_to_exact = np.linalg.inv(triplet_exact_to_over).astype(int)
 # print(triplet_over_to_exact)
+
 
 def d_connected_triplet_motif_density_dense(g):
     """
     Python is garbage, and should be thrown in the dumpster, because it is garbage.
     I am rewriting this function here to handle dense numpy arrays, since apparently they don't have a `.multiply`
     method for entrywise multiplication.
-    
+
     Return the uncorrected density of connected triplet motifs. "Uncorrected" means this function counts subgraphs
     isomorphic to each three-node motif, not *induced* subgraphs. To "correct" the output, do the following:
 
@@ -172,7 +173,7 @@ def d_connected_triplet_motif_density_dense(g):
     num_edges = g.sum()
     g_squared = g.dot(g)
     tr_g_sq = g_squared.diagonal().sum()  # works with sparse matrices, not with numpy arrays?
-    
+
     counts[0] = (n - 2) * num_edges  # (over)counts triplets of nodes with at least 1 edge
     counts[1] = (n - 2) * tr_g_sq / 2  # (over)counts triplets of nodes with at least 1 recip
     counts[2] = (g_squared.sum() - tr_g_sq)
@@ -187,7 +188,7 @@ def d_connected_triplet_motif_density_dense(g):
     counts[6] = g_cubed.diagonal().sum() / 3
 
     g_sym = np.multiply(g, g.T)
-    bidegi = g_sym.sum(axis=1)
+    bidegi = g_sym.sum(axis=1)[:, None]
     counts[7] = np.multiply(g, bidegi).sum() - g_sym.sum()
     counts[8] = np.multiply(g, bidegi.T).sum() - g_sym.sum()
     counts[9] = np.multiply(g_sym, converging).sum() / 2
@@ -207,7 +208,7 @@ def d_delta_connected_triplet_motif_density_dense(g, u, v):
     Python is garbage, and should be thrown in the dumpster, because it is garbage.
     I am rewriting this function here to handle dense numpy arrays, since apparently they don't have a `.multiply`
     method for entrywise multiplication.
-    
+
     Return the change in uncorrected motif density when edge `u,v` is toggled
     :param g: sparse adjacency matrix
     :param u: source of edge
@@ -245,9 +246,9 @@ def d_delta_connected_triplet_motif_density_dense(g, u, v):
     delta[12] = g[v, u] * (bidegu + bidegv - 2 * g[u, v])
     delta[13] = common_post.dot(common_pre)  # additional stuff if g[v,u] is not 0
     if g[v, u] != 0:
-        delta[10] = delta[10] + g[u, :].dot(g[:, v]) + g[v, :].dot(g[:, u]) 
-        delta[13] = delta[13] + common_post.dot(g[:, v])  + common_post.dot(g[:, u])  + \
-                    g[u, :].dot(common_pre)  + g[v, :].dot(common_pre) 
-        delta[14] = common_post.dot(common_pre) 
+        delta[10] = delta[10] + g[u, :].dot(g[:, v]) + g[v, :].dot(g[:, u])
+        delta[13] = delta[13] + common_post.dot(g[:, v]) + common_post.dot(g[:, u]) + \
+            g[u, :].dot(common_pre) + g[v, :].dot(common_pre)
+        delta[14] = common_post.dot(common_pre)
 
     return 6 * Duv * delta / (n * (n - 1) * (n - 2))
