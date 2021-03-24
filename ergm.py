@@ -206,8 +206,8 @@ class ERGM:
 
         # determine the sequence of edges to visit
         urand = np.random.rand(total_steps)
-        rand_indexes = np.random.choice(range(n_nodes * (n_nodes - 1) // (1 + (not self.directed))), size=total_steps,
-                                        replace=True)
+        # rand_indexes = np.random.choice(range(n_nodes * (n_nodes - 1) // (1 + (not self.directed))), size=total_steps, replace=True)
+        rand_indexes = np.random.randint(0, n_nodes * (n_nodes - 1) // (1 + (not self.directed)), size=total_steps)
         edge_sequence = index_to_edge(rand_indexes, n_nodes, self.directed)
         # TODO There might be a way to speed up indexing into a CSR matrix by reformatting the edge sequence
 
