@@ -91,3 +91,55 @@ def networkx_graph_to_sparse_array(g):
 
 def flatten(t):
     return [item for sublist in t for item in sublist]
+
+
+def directed_triplet_motif_index(G):
+    """Return the directed motif index of three-node graph G (G is a nx graph type)
+
+    The motif index is then computed as follows:
+    Each possible (undirected) edge on the nodes of G is sorted in lexicographic order.
+    For each pair of vertices, two bits encode, in order, the presence of the edge from
+    lower index to higher index and the edge from higher index to lower index. These bits
+    are reversed and concatenated to form a single integer
+
+    Example: G has three nodes, labeled i,j,k in sorted order. It has edge ij, ik, ki, and kj.
+    The lex order for the pairs is ij, ik, jk. Pair ij has edge ij (low-high) but not ji (high-low),
+    so the least significant bit is 1 and the second-least significant bit is 0. For pair ik, we have both
+    directed edges so those bits are 11. Lastly, pair jk has only the high-low edge, so the higher-order
+    bit is 1 while the lower bit is 0. Putting these bits together from right to left we get 101101,
+    which is 45 in decimal.
+
+    !!! Note that the order of vertice s in G has nothing to do with numerical order!
+        See networkx documentation about classes OrderedGraph and OrderedDiGraph.
+
+    Returns an integer between 0 and 63 (inclusive)
+    """
+    bit_selector = np.array([[0, 1, 4], [2, 0, 16], [8, 32, 0]])
+    return np.sum(np.multiply(bit_selector, nx.to_numpy_matrix(G).astype(int)))
+
+
+def directed_triplet_motif_index_from_matrix(M):
+    """Same as directed_triplet_motif_index but accepts a numpy matrix as its argument"""
+    bit_selector = np.array([[0, 1, 4], [2, 0, 16], [8, 32, 0]])
+    return np.sum(np.multiply(bit_selector, M))
+
+
+def binary_digits(n, d):  # numpy-optimized
+    """Returns an n x d array of the binary digits of each entry of array n
+    Parameters:
+        n : array_like
+            Integer values to be represented as binary digits
+        d : the number of digits; zero padding and/or truncation if necessary
+    Returns:
+        digits : an n x d binary array; each row is the digits of the corresponding entry of n. Least significant bit has index 0.
+    """
+    return ((n[:, None] & (1 << np.arange(d))) > 0).astype(int)
+
+
+def index_to_directed_triplet_motif_matrix(n):
+    """Return the adjacency matrix corresponding to motif with index n, as defined by the function
+    directed_triplet_motif_index"""
+    digs = binary_digits(np.array([n]), 6)
+    A = np.zeros((3, 3), dtype=int)
+    A[tuple([[0, 1, 0, 2, 1, 2], [1, 0, 2, 0, 2, 1]])] = digs
+    return A
