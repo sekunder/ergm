@@ -9,16 +9,29 @@ def tupp(m):
     return tuple(m.ravel())
 
 
+def matt(m):
+    return np.array(m).reshape(3, 3)
+
+
 ################################################################################
 # Isomorphisms of 3 node graphs
 ################################################################################
 permutation_matrices = {(s0, s1, s2): np.array([basis_vector(s0), basis_vector(s1), basis_vector(s2)]) for s0, s1, s2 in permutations(range(3))}
 
 
+def get_permutation_matrices():
+    """
+    There's some aspects of python's import system that I cannot seem to figure
+    out, so there's going to be a lot of these `get_blah()` functions in this
+    file.
+    """
+    return permutation_matrices
+
+
 def isomorphic(tg, th):
     """Check if graphs, represented by raveled tuples tg, th, are isomorphic"""
-    mg = np.array(tg).reshape(3, 3)
-    mh = np.array(th).reshape(3, 3)
+    mg = matt(tg)
+    mh = matt(th)
     for P in permutation_matrices.values():
         if np.all(P @ mg @ P.T == mh):
             return True
@@ -26,8 +39,8 @@ def isomorphic(tg, th):
 
 
 def color_isomorphic(tg, th, cg, ch):
-    mg = np.array(tg).reshape(3, 3)
-    mh = np.array(th).reshape(3, 3)
+    mg = matt(tg)
+    mh = matt(th)
     for s, P in permutation_matrices.items():
         colors_match = all(cg[si] == ch[i] for si, i in zip(s, range(3)))
         if colors_match and np.all(P @ mg @ P.T == mh):
@@ -91,9 +104,64 @@ for k in range(64):
     iso_classes_ABC[t] = [t]  # preimage map from representative to list of tuples. Always singleton
     iso_representative_ABC[t] = t  # map from tuple to representative tuple (just identity map)
 
+
+def get_iso_classes(pat):
+    if pat == "AAA":
+        return iso_classes_AAA
+    if pat == "AAB":
+        return iso_classes_AAB
+    if pat == "ABB":
+        return iso_classes_ABB
+    if pat == "ABC":
+        return iso_classes_ABC
+    return {}
+
+
+def get_iso_representative(pat):
+    if pat == "AAA":
+        return iso_representative_AAA
+    if pat == "AAB":
+        return iso_representative_AAB
+    if pat == "ABB":
+        return iso_representative_ABB
+    if pat == "ABC":
+        return iso_representative_ABC
+    return {}
+
+
+def get_iso_list(pat):
+    if pat == "AAA":
+        return iso_list_AAA
+    if pat == "AAB":
+        return iso_list_AAB
+    if pat == "ABB":
+        return iso_list_ABB
+    if pat == "ABC":
+        return iso_list_ABC
+    return []
+
+
+def class_representative(ct, gt):
+    """
+    Get the graph tuple of the represntative of the class in whic `gt` lives
+    given the nodes are colored according to the pattern in `ct`.
+    Note that this skips pattern 'ABA' since all my current algorithms
+    will avoid using that pattern.
+    """
+    if ct[0] == ct[1] == ct[2]:  # Case AAA
+        return iso_representative_AAA[gt]
+    if ct[0] == ct[1] != ct[2]:  # Case AAB
+        return iso_representative_AAB[gt]
+    if ct[0] != ct[1] == ct[2]:  # Case ABB
+        return iso_representative_ABB[gt]
+    if ct[0] != ct[1] != ct[2]:  # Case ABC
+        return iso_representative_ABC[gt]
+    return None
+
 ################################################################################
 # Mobius Inversion-type matrices
 ################################################################################
+
 
 iso_list_AAA = list(iso_classes_AAA.keys())
 exact_to_over_AAA = np.zeros((len(iso_list_AAA), len(iso_list_AAA)), dtype=int)
@@ -123,7 +191,7 @@ for j, tm_j in enumerate(iso_list_ABB):
         exact_to_over_ABB[i, j] += 1
 over_to_exact_ABB = np.linalg.inv(exact_to_over_ABB).astype(int)
 
-# iso_list_ABC = list(iso_classes_ABC.keys())
+iso_list_ABC = list(iso_classes_ABC.keys())
 digits = binary_digits(np.arange(64), 6)
 exact_to_over_ABC = np.zeros((64, 64), dtype=int)
 for j in range(64):
@@ -137,7 +205,7 @@ over_to_exact_ABC = np.linalg.inv(exact_to_over_ABC).astype(int)
 ################################################################################
 
 
-def overcount_three_color(c0, c1, c2, n0, n1, n2, sub01, sub02, sub10, sub12, sub20, sub21):
+def overcount_three_color(c0, c1, c2, n0, n1, n2, sub01, sub02, sub10, sub12, sub20, sub21, verbose=False):
     """
     args:
     c0,c1,c2 : color names (will be checked against each other for correction factors)
@@ -153,13 +221,21 @@ def overcount_three_color(c0, c1, c2, n0, n1, n2, sub01, sub02, sub10, sub12, su
     """
     if c0 == c1 == c2:
         # Color pattern AAA
+        if verbose:
+            print("Counting with pattern AAA")
         return overcount_AAA(sub01), over_to_exact_AAA
     if c0 == c1:
+        if verbose:
+            print("Counting with pattern AAB")
         # Color pattern AAB
         return overcount_AAB(n0, n2, sub01, sub02, sub20), over_to_exact_AAB
     if c1 == c2:
+        if verbose:
+            print("Counting with pattern ABB")
         # color pattern ABB
         return overcount_ABB(n0, n1, sub01, sub10, sub12), over_to_exact_ABB
+    if verbose:
+        print("Counting with pattern ABC")
     return overcount_ABC(n0, n1, n2, sub01, sub02, sub10, sub12, sub20, sub21), over_to_exact_ABC
 
 
