@@ -4,8 +4,8 @@ utility functions for ergm
 import numpy as np
 import datetime
 import sys
-
 import networkx as nx
+from itertools import combinations
 
 
 # from scipy import sparse
@@ -143,3 +143,35 @@ def index_to_directed_triplet_motif_matrix(n):
     A = np.zeros((3, 3), dtype=int)
     A[tuple([[0, 1, 0, 2, 1, 2], [1, 0, 2, 0, 2, 1]])] = digs
     return A
+
+
+def subsets(itr):
+    """
+    Iterator over subsets of `itr`, including both empty set and all of `itr`.
+    """
+    for r in range(len(itr) + 1):
+        for c in combinations(itr, r):
+            yield c
+
+
+def bin_subsets(vec):
+    """Iterate over the subsets of the given binary tuple (i.e. over all vectors with support contained in the support of vec)"""
+    for s in subsets(np.where(vec)[0]):
+        v = [0] * len(vec)
+        for idx in s:
+            v[idx] = 1
+        yield tuple(v)
+
+
+def basis_vector(i, n=3, dtype=int):
+    v = np.zeros(n, dtype=dtype)
+    v[i] = 1
+    return v
+
+
+def last_sorted_index(itr, n):
+    """The greatest index `i` such that `itr[i] < n` is true"""
+    for i, v in enumerate(itr):
+        if v > n:
+            return i - 1
+    return len(itr)
