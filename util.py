@@ -175,3 +175,14 @@ def last_sorted_index(itr, n):
         if v > n:
             return i - 1
     return len(itr)
+
+
+def random_partition(n, p):
+    """Returns an array of the form [0, k_1, k_2, ..., k_p] with 0 <= k_1 <= k_2 <= ... <= k_p = n.
+    This corresponds to a partition of n things into p parts."""
+    parts = np.random.choice(range(n + p - 1), size=p - 1, replace=False)
+    parts.sort()
+    full_parts = np.hstack([[-1], parts, [n + p - 1]])
+    between_bars = np.diff(full_parts)
+    partition = np.cumsum(np.hstack([[0], between_bars - np.ones_like(between_bars)]))
+    return partition
