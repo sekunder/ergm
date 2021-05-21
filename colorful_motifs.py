@@ -266,7 +266,7 @@ def triplet_counts_to_dataframe(counts):
     for k in counts.keys():
         k_counts = counts[k]
         colors += [k] * len(k_counts)
-        count += k_counts
+        count += list(k_counts)
         index += list(range(len(counts[k])))
         motif += get_iso_list(k)
     return pd.DataFrame({"color": colors, "motif_index": index, "motif": motif, "count": count})
