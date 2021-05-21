@@ -1,6 +1,6 @@
 """Matrix algebra for counting triplet motifs"""
 import numpy as np
-from itertools import permutations
+from itertools import permutations, combinations_with_replacement
 
 from util import index_to_directed_triplet_motif_matrix, basis_vector, bin_subsets, binary_digits
 
@@ -56,7 +56,7 @@ iso_representative_AAA = {}  # map from tuple to represantive tuple
 iso_classes_AAA = {}  # preimage map from represntative tuple to list of tuples
 for k in range(64):
     m = index_to_directed_triplet_motif_matrix(k)
-    tm = tuple(m.ravel())  # current tuple
+    tm = tupp(m)  # current tuple
     for iso in iso_classes_AAA:  # iso is the representative tuple
         if isomorphic(tm, iso):
             iso_classes_AAA[iso].append(tm)
@@ -72,7 +72,7 @@ colors_AAB = [0, 0, 1]
 for k in range(64):
     # base graph has colors AAB
     m = index_to_directed_triplet_motif_matrix(k)
-    tm = tuple(m.ravel())
+    tm = tupp(m)
     for iso in iso_classes_AAB:
         if color_isomorphic(tm, iso, colors_AAB, colors_AAB):
             iso_classes_AAB[iso].append(tm)
@@ -84,11 +84,11 @@ for k in range(64):
 
 iso_classes_ABB = {}  # preimage map from representative to list of tuples. Color is always ABB
 iso_representative_ABB = {}  # map from tuple to representative tuple
-colors_ABB = [0, 0, 1]
+colors_ABB = [0, 1, 1]
 for k in range(64):
     # base graph has colors ABB
     m = index_to_directed_triplet_motif_matrix(k)
-    tm = tuple(m.ravel())
+    tm = tupp(m)
     for iso in iso_classes_ABB:
         if color_isomorphic(tm, iso, colors_ABB, colors_ABB):
             iso_classes_ABB[iso].append(tm)
@@ -106,13 +106,17 @@ for k in range(64):
 
 
 def get_iso_classes(pat):
-    if pat == "AAA":
+    # if pat == "AAA":
+    if pat[0] == pat[1] == pat[2]:
         return iso_classes_AAA
-    if pat == "AAB":
+    # if pat == "AAB":
+    if pat[0] == pat[1]:
         return iso_classes_AAB
-    if pat == "ABB":
+    # if pat == "ABB":
+    if pat[1] == pat[2]:
         return iso_classes_ABB
-    if pat == "ABC":
+    # if pat == "ABC":
+    if pat[0] != pat[1] != pat[2]:
         return iso_classes_ABC
     return {}
 
@@ -237,6 +241,26 @@ def overcount_three_color(c0, c1, c2, n0, n1, n2, sub01, sub02, sub10, sub12, su
     if verbose:
         print("Counting with pattern ABC")
     return overcount_ABC(n0, n1, n2, sub01, sub02, sub10, sub12, sub20, sub21), over_to_exact_ABC
+
+
+def colorful_triplet_count(adj, partition):
+    """
+    Count all motifs, across all combinations of colors, for the given adjacency matrix `adj`
+    """
+    n_c = np.diff(partition)
+    n_colors = len(n_c)
+    sub = {}
+    for c0 in range(n_colors):
+        for c1 in range(n_colors):
+            sub[c0, c1] = adj[partition[c0]:partition[c0 + 1], partition[c1]:partition[c1 + 1]]
+
+    matrix_over_counts = {}
+    matrix_exact_counts = {}
+    for c0, c1, c2 in combinations_with_replacement(range(n_colors), 3):
+        n0, n1, n2 = n_c[c0], n_c[c1], n_c[c2]
+        matrix_over_counts[c0, c1, c2], correction = overcount_three_color(c0, c1, c2, n0, n1, n2, sub[c0, c1], sub[c0, c2], sub[c1, c0], sub[c1, c2], sub[c2, c0], sub[c2, c1])
+        matrix_exact_counts[c0, c1, c2] = correction.dot(matrix_over_counts[c0, c1, c2])
+    return matrix_exact_counts, matrix_over_counts
 
 
 def tr(M):
