@@ -1,5 +1,6 @@
 """Matrix algebra for counting triplet motifs"""
 import numpy as np
+import pandas as pd
 from itertools import permutations, combinations_with_replacement
 
 from util import index_to_directed_triplet_motif_matrix, basis_vector, bin_subsets, binary_digits
@@ -106,41 +107,37 @@ for k in range(64):
 
 
 def get_iso_classes(pat):
-    # if pat == "AAA":
     if pat[0] == pat[1] == pat[2]:
         return iso_classes_AAA
-    # if pat == "AAB":
     if pat[0] == pat[1]:
         return iso_classes_AAB
-    # if pat == "ABB":
     if pat[1] == pat[2]:
         return iso_classes_ABB
-    # if pat == "ABC":
     if pat[0] != pat[1] != pat[2]:
         return iso_classes_ABC
     return {}
 
 
 def get_iso_representative(pat):
-    if pat == "AAA":
+    if pat[0] == pat[1] == pat[2]:
         return iso_representative_AAA
-    if pat == "AAB":
+    if pat[0] == pat[1]:
         return iso_representative_AAB
-    if pat == "ABB":
+    if pat[1] == pat[2]:
         return iso_representative_ABB
-    if pat == "ABC":
+    if pat[0] != pat[1] != pat[2]:
         return iso_representative_ABC
     return {}
 
 
 def get_iso_list(pat):
-    if pat == "AAA":
+    if pat[0] == pat[1] == pat[2]:
         return iso_list_AAA
-    if pat == "AAB":
+    if pat[0] == pat[1]:
         return iso_list_AAB
-    if pat == "ABB":
+    if pat[1] == pat[2]:
         return iso_list_ABB
-    if pat == "ABC":
+    if pat[0] != pat[1] != pat[2]:
         return iso_list_ABC
     return []
 
@@ -261,6 +258,18 @@ def colorful_triplet_count(adj, partition):
         matrix_over_counts[c0, c1, c2], correction = overcount_three_color(c0, c1, c2, n0, n1, n2, sub[c0, c1], sub[c0, c2], sub[c1, c0], sub[c1, c2], sub[c2, c0], sub[c2, c1])
         matrix_exact_counts[c0, c1, c2] = correction.dot(matrix_over_counts[c0, c1, c2])
     return matrix_exact_counts, matrix_over_counts
+
+
+def triplet_counts_to_dataframe(counts):
+    """Convert a dictionary of counts, as returned by colorful_triplet_count, into a dataframe"""
+    colors, motif, index, count = [], [], [], []
+    for k in counts.keys():
+        k_counts = counts[k]
+        colors += [k] * len(k_counts)
+        count += k_counts
+        index += list(range(len(counts[k])))
+        motif += get_iso_list(k)
+    return pd.DataFrame({"color": colors, "motif_index": index, "motif": motif, "count": count})
 
 
 def tr(M):
