@@ -95,21 +95,22 @@ for trial in range(n_loops):
     print("  Triplets processed:", triplets_processed, "/", n_triplets, "(", 100 * triplets_processed / n_triplets, "% )")
 
     info('  Preparing dataframes to consolidate counts')
-    motif_counts_df = pd.DataFrame([[ct, gt, count] for ct in true_counts_ord_col for gt, count in true_counts_ord_col[ct].items()], columns=["Colors", "Motif", "Count"])
-    motif_counts_df["representative"] = [class_representative(ct, gt) for ct, gt in zip(motif_counts_df["Colors"], motif_counts_df["Motif"])]
-    consolidated_counts_df = motif_counts_df.groupby(["Colors", "representative"]).agg({"Count": "sum"})
+    motif_counts_df = pd.DataFrame([[ct, gt, count] for ct in true_counts_ord_col for gt, count in true_counts_ord_col[ct].items()], columns=["color", "motif", "count"])
+    motif_counts_df["representative"] = [class_representative(ct, gt) for ct, gt in zip(motif_counts_df["color"], motif_counts_df["motif"])]
+    consolidated_counts_df = motif_counts_df.groupby(["color", "representative"]).agg({"count": "sum"})
 
     info("  Preparing to count using matrix algebra")
-    matrix_over_counts = {}
-    matrix_exact_counts = {}
-    for c0 in range(n_colors):
-        n0 = n_c[c0]
-        for c1 in range(c0, n_colors):
-            n1 = n_c[c1]
-            for c2 in range(c1, n_colors):
-                n2 = n_c[c2]
-                matrix_over_counts[(c0, c1, c2)], correction = overcount_three_color(c0, c1, c2, n0, n1, n2, sub[c0, c1], sub[c0, c2], sub[c1, c0], sub[c1, c2], sub[c2, c0], sub[c2, c1])
-                matrix_exact_counts[(c0, c1, c2)] = correction.dot(matrix_over_counts[(c0, c1, c2)])
+    # matrix_over_counts = {}
+    # matrix_exact_counts = {}
+    # for c0 in range(n_colors):
+    #     n0 = n_c[c0]
+    #     for c1 in range(c0, n_colors):
+    #         n1 = n_c[c1]
+    #         for c2 in range(c1, n_colors):
+    #             n2 = n_c[c2]
+    #             matrix_over_counts[(c0, c1, c2)], correction = overcount_three_color(c0, c1, c2, n0, n1, n2, sub[c0, c1], sub[c0, c2], sub[c1, c0], sub[c1, c2], sub[c2, c0], sub[c2, c1])
+    #             matrix_exact_counts[(c0, c1, c2)] = correction.dot(matrix_over_counts[(c0, c1, c2)])
+    matrix_exact_counts, matrix_over_counts = colorful_triplet_count(adj, partition)
 
     info("  Testing counts")
     any_tests_failed = False
@@ -131,7 +132,7 @@ for trial in range(n_loops):
                 if c2 != c1:
                     max_triplets[(c0, c1, c2)] = n0 * n1 * n2
                 debug("    Pattern %d %d %d", c0, c1, c2)
-                num_counted = consolidated_counts_df.loc[(c0, c1, c2)]["Count"].sum()
+                num_counted = consolidated_counts_df.loc[(c0, c1, c2)]["count"].sum()
                 total_triplets_counted += num_counted
                 debug("    Number of triplets of this type counted: %d / %d", num_counted, max_triplets[(c0, c1, c2)])
                 exhaustive = consolidated_counts_df.loc[(c0, c1, c2)].to_dict()
@@ -148,7 +149,7 @@ for trial in range(n_loops):
                 else:
                     iso_list = get_iso_list("ABC")
                     exact_to_over = exact_to_over_ABC
-                exact_counts = np.array([exhaustive["Count"][tup] for tup in iso_list])
+                exact_counts = np.array([exhaustive["count"][tup] for tup in iso_list])
                 exact_match = np.all(exact_counts == matrix_exact_counts[(c0, c1, c2)])
                 any_tests_failed = any_tests_failed and not exact_match
                 debug("    Match?", exact_match)
