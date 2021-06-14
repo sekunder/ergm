@@ -98,21 +98,23 @@ for trial in range(n_loops):
     motif_counts_df = pd.DataFrame([[ct, gt, count] for ct in true_counts_ord_col for gt, count in true_counts_ord_col[ct].items()], columns=["color", "motif", "count"])
     motif_counts_df["representative"] = [class_representative(ct, gt) for ct, gt in zip(motif_counts_df["color"], motif_counts_df["motif"])]
     consolidated_counts_df = motif_counts_df.groupby(["color", "representative"]).agg({"count": "sum"})
+    with pd.option_context('display.max_rows', None, 'display.max_columns', None):
+        print(consolidated_counts_df.head())
+    print()
 
     info("  Preparing to count using matrix algebra")
-    # matrix_over_counts = {}
-    # matrix_exact_counts = {}
-    # for c0 in range(n_colors):
-    #     n0 = n_c[c0]
-    #     for c1 in range(c0, n_colors):
-    #         n1 = n_c[c1]
-    #         for c2 in range(c1, n_colors):
-    #             n2 = n_c[c2]
-    #             matrix_over_counts[(c0, c1, c2)], correction = overcount_three_color(c0, c1, c2, n0, n1, n2, sub[c0, c1], sub[c0, c2], sub[c1, c0], sub[c1, c2], sub[c2, c0], sub[c2, c1])
-    #             matrix_exact_counts[(c0, c1, c2)] = correction.dot(matrix_over_counts[(c0, c1, c2)])
     matrix_exact_counts, matrix_over_counts = colorful_triplet_count(adj, partition)
+    matrix_counts_df = triplet_counts_to_dataframe(matrix_exact_counts)
+    with pd.option_context('display.max_rows', None, 'display.max_columns', None):
+        print(matrix_counts_df.head())
+    print()
 
     info("  Testing counts")
+    comparison_df = matrix_counts_df.merge(consolidated_counts_df, left_on=["color", "motif"], right_index=True, suffixes=["_m", "_e"])
+    with pd.option_context('display.max_rows', None, 'display.max_columns', None):
+        # print(comparison_df.head())
+        info("    Mismatched counts between matrix and exhaustive:")
+        print(comparison_df[comparison_df["count_m"] != comparison_df["count_e"]])
     any_tests_failed = False
     total_triplets_counted = 0
 
