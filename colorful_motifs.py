@@ -14,6 +14,21 @@ def matt(m):
     return np.array(m).reshape(3, 3)
 
 
+def triplet_pattern(t):
+    """Convert an arbitrary 3-tuple into a string specifying the distinct elements."""
+    if t[0] == t[1] == t[2]:
+        return "AAA"
+    if t[0] == t[1]:
+        return "AAB"
+    if t[1] == t[2]:
+        return "ABB"
+    return "ABC"
+
+
+def tuple_swap_02(t):
+    return (t[2], t[1], t[0])
+
+
 ################################################################################
 # Isomorphisms of 3 node graphs
 ################################################################################
@@ -47,6 +62,7 @@ def color_isomorphic(tg, th, cg, ch):
         if colors_match and np.all(P @ mg @ P.T == mh):
             return True
     return False
+
 
 ################################################################################
 # Mapping from graphs to their isomorphism class
@@ -202,6 +218,26 @@ for j in range(64):
 over_to_exact_ABC = np.linalg.inv(exact_to_over_ABC).astype(int)
 
 ################################################################################
+# Consolidating AAB and ABB colorings
+################################################################################
+
+
+def swap_nodes_02(tup):
+    """
+    Swap nodes 0 and 2 in the motif represented by `tup`.
+    """
+    P = permutation_matrices[(2, 1, 0)]
+    m = np.array(tup).reshape(3, 3)
+    pm = P @ m @ P.T
+    return tuple(pm.ravel())
+
+
+ABB_to_AAB_map = {iso: iso_representative_AAB[swap_nodes_02(iso)] for iso in iso_classes_ABB.keys()}
+ABB_to_AAB_index_map = {iso_list_ABB.index(k): iso_list_AAB.index(v) for k, v in ABB_to_AAB_map.items()}
+ABB_to_ABB_index_array = np.array([iso_list_AAB.index(ABB_to_AAB_map[iso]) for iso in iso_list_ABB])
+
+
+################################################################################
 # THE STAR OF THE SHOW
 ################################################################################
 
@@ -270,6 +306,15 @@ def triplet_counts_to_dataframe(counts):
         index += list(range(len(counts[k])))
         motif += get_iso_list(k)
     return pd.DataFrame({"color": colors, "motif_index": index, "motif": motif, "count": count})
+
+
+def consolidate_two_color_counts(df):
+    """Given a dataframe of counts, replace motif counts for ABB colorings with the equivalent BBA coloring"""
+    pat_series = pd.Series([triplet_pattern(ct) for ct in df["color"]])
+    df["color"].where(pat_series != "ABB", [tuple_swap_02(ct) for ct in df["color"]], inplace=True)
+    df["motif_index"].where(pat_series != "ABB", [ABB_to_AAB_index_map.get(i, -1) for i in df["motif_index"]], inplace=True)
+    df["motif"].where(pat_series != "ABB", [swap_nodes_02(gt) for gt in df["motif"]], inplace=True)
+    return df
 
 
 def tr(M):
