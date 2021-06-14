@@ -258,7 +258,7 @@ def my_index_map(ct, i):
         return i
 
 
-def consolidate_two_color_counts(df):
+def standardize_two_color_counts(df):
     """Given a dataframe of counts, replace motif counts for ABB colorings with the equivalent BBA coloring"""
     pat_series = pd.Series([triplet_pattern(ct) for ct in df["color"]])
     df_ = df.copy(deep=True)
