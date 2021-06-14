@@ -237,6 +237,38 @@ ABB_to_AAB_index_map = {iso_list_ABB.index(k): iso_list_AAB.index(v) for k, v in
 ABB_to_ABB_index_array = np.array([iso_list_AAB.index(ABB_to_AAB_map[iso]) for iso in iso_list_ABB])
 
 
+def my_swap(t):
+    if triplet_pattern(t) == "ABB":
+        return (t[2], t[1], t[0])
+    else:
+        return t
+
+
+def my_node_swap(ct, gt):
+    if triplet_pattern(ct) == "ABB":
+        return iso_representative_AAB[swap_nodes_02(gt)]
+    else:
+        return gt
+
+
+def my_index_map(ct, i):
+    if triplet_pattern(ct) == "ABB":
+        return ABB_to_AAB_index_map[i]
+    else:
+        return i
+
+
+def consolidate_two_color_counts(df):
+    """Given a dataframe of counts, replace motif counts for ABB colorings with the equivalent BBA coloring"""
+    pat_series = pd.Series([triplet_pattern(ct) for ct in df["color"]])
+    df_ = df.copy(deep=True)
+
+    df_["color"] = [my_swap(ct) for ct in df_["color"]]
+    df_["motif"] = [my_node_swap(ct, gt) for ct, gt in zip(pat_series, df_["motif"])]
+    df_["motif_index"] = [my_index_map(ct, i) for ct, i in zip(pat_series, df_["motif_index"])]
+    return df_
+
+
 ################################################################################
 # THE STAR OF THE SHOW
 ################################################################################
@@ -306,15 +338,6 @@ def triplet_counts_to_dataframe(counts):
         index += list(range(len(counts[k])))
         motif += get_iso_list(k)
     return pd.DataFrame({"color": colors, "motif_index": index, "motif": motif, "count": count})
-
-
-def consolidate_two_color_counts(df):
-    """Given a dataframe of counts, replace motif counts for ABB colorings with the equivalent BBA coloring"""
-    pat_series = pd.Series([triplet_pattern(ct) for ct in df["color"]])
-    df["color"].where(pat_series != "ABB", [tuple_swap_02(ct) for ct in df["color"]], inplace=True)
-    df["motif_index"].where(pat_series != "ABB", [ABB_to_AAB_index_map.get(i, -1) for i in df["motif_index"]], inplace=True)
-    df["motif"].where(pat_series != "ABB", [swap_nodes_02(gt) for gt in df["motif"]], inplace=True)
-    return df
 
 
 def tr(M):
