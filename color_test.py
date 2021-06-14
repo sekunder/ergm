@@ -62,9 +62,8 @@ for trial in range(n_loops):
     adj = nx.convert_matrix.to_scipy_sparse_matrix(G)
     sub = {}
     for c0 in range(n_colors):
-        sub[c0] = {}
         for c1 in range(n_colors):
-            sub[c0][c1] = adj[partition[c0]:partition[c0 + 1], partition[c1]:partition[c1 + 1]]
+            sub[c0, c1] = adj[partition[c0]:partition[c0 + 1], partition[c1]:partition[c1 + 1]]
 
     # initialize the true counts dictionary with a tuple for every color combo we'll run in to, and a tuple for every possible graph
     info("  Beginning exhaustive search to categorize all triplets of nodes")
@@ -109,7 +108,7 @@ for trial in range(n_loops):
             n1 = n_c[c1]
             for c2 in range(c1, n_colors):
                 n2 = n_c[c2]
-                matrix_over_counts[(c0, c1, c2)], correction = overcount_three_color(c0, c1, c2, n0, n1, n2, sub[c0][c1], sub[c0][c2], sub[c1][c0], sub[c1][c2], sub[c2][c0], sub[c2][c1])
+                matrix_over_counts[(c0, c1, c2)], correction = overcount_three_color(c0, c1, c2, n0, n1, n2, sub[c0, c1], sub[c0, c2], sub[c1, c0], sub[c1, c2], sub[c2, c0], sub[c2, c1])
                 matrix_exact_counts[(c0, c1, c2)] = correction.dot(matrix_over_counts[(c0, c1, c2)])
 
     info("  Testing counts")
