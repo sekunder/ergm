@@ -181,10 +181,12 @@ class ERGM:
         :param g0: Initial adjacency matrix to use. Default is previous internal state for sampler, if appropriate
         :param print_logs: where to print logs. Default is None, suppressing output
         :return: A numpy array of integers (the adjacency matrices) and a numpy array of floats (the statistics)
+                 and a dictionary of diagnostic info 
 
         This method uses Gibbs sampling.
         """
         # TODO write up some details on the internals of this method in the docstring
+        diagnostics = {}
 
         # Compute number of steps this MC will take
         if burn_in is None:
@@ -206,6 +208,9 @@ class ERGM:
 
         # determine the sequence of edges to visit
         urand = np.random.rand(total_steps)
+        pflip = np.zeros_like(urand)  # the probability of flipping the edge at each step (aka proposal probability)
+        accept = np.zeros_like(urand, dtype=bool)  # whether the edge was flipped at each step
+        accept_rate = np.zeros(n_samples)  # what fraction of steps were actual moves from one sample to the next
         # rand_indexes = np.random.choice(range(n_nodes * (n_nodes - 1) // (1 + (not self.directed))), size=total_steps, replace=True)
         rand_indexes = np.random.randint(0, n_nodes * (n_nodes - 1) // (1 + (not self.directed)), size=total_steps)
         edge_sequence = index_to_edge(rand_indexes, n_nodes, self.directed)
@@ -247,13 +252,16 @@ class ERGM:
             delta_k = self.delta_stats(self.current_adj, edge_sequence[0, step], edge_sequence[1, step])
             self.proposed_stats[:] = self.current_stats[:] - delta_k[:]  # the [:] are there to avoid new allocations(?)
             self.proposed_logweight = self.theta.dot(self.proposed_stats)
-            p_flip = 1 / (1 + math.exp(self.theta.dot(delta_k)))
-            if urand[step] < p_flip:
+#             p_flip = 1 / (1 + math.exp(self.theta.dot(delta_k)))
+            pflip[step] = 1 / (1 + math.exp(self.theta.dot(delta_k)))
+#             if urand[step] < p_flip:
+            if urand[step] < pflip[step]:
                 # flip the edge, save the logweight and stats
                 self._toggle_current_edge(edge_sequence[0, step], edge_sequence[1, step])
                 self.current_stats[:] = self.proposed_stats[:]
                 self.current_logweight = self.proposed_logweight
                 # avoid modifying self.current_adj, which may be sparse, until we're sure we're flipping the edge.
+                accept[step] = True
             if step >= burn_in and (step - burn_in) % n_steps == 0:
                 # emit sample
                 sample_num = (step - burn_in) // n_steps
@@ -266,10 +274,14 @@ class ERGM:
                 else:
                     samples[:, :, sample_num] = self.current_adj[:, :]
                 sample_stats[:, sample_num] = self.current_stats[:]
+                accept_rate[sample_num] = accept[(step - n_steps):step].mean()
         t_end = time.time()
         log_msg("sample_gibbs: Sampling finished in", t_end - t_start, "s", out=print_logs)
+        diagnostics["proposal"] = pflip
+        diagnostics["accept"] = accept
+        diagnostics["accept_rate"] = accept_rate
 
-        return samples, sample_stats
+        return samples, sample_stats, diagnostics
 
     def _toggle_current_edge(self, u, v):
         """
