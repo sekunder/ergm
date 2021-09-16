@@ -253,7 +253,14 @@ class ERGM:
             self.proposed_stats[:] = self.current_stats[:] - delta_k[:]  # the [:] are there to avoid new allocations(?)
             self.proposed_logweight = self.theta.dot(self.proposed_stats)
 #             p_flip = 1 / (1 + math.exp(self.theta.dot(delta_k)))
-            pflip[step] = 1 / (1 + math.exp(self.theta.dot(delta_k)))
+            delta_E = self.theta.dot(delta_k)
+            try:
+                pflip[step] = 1 / (1 + math.exp(self.theta.dot(delta_k)))
+            except OverflowError:
+                if delta_E > 0:
+                    pflip[step] = 0.0
+                else:
+                    pflip[step] = 1.0
 #             if urand[step] < p_flip:
             if urand[step] < pflip[step]:
                 # flip the edge, save the logweight and stats
