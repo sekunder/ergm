@@ -272,7 +272,7 @@ class ERGM:
             if step >= burn_in and (step - burn_in) % n_steps == 0:
                 # emit sample
                 sample_num = (step - burn_in) // n_steps
-                if print_logs is not None and (sample_num + 1) % (n_samples // 10) == 0:
+                if print_logs is not None and (n_samples < 10 or (sample_num + 1) % (n_samples // 10) == 0):
                     log_msg("sample_gibbs: emitting sample %8d / %8d" % (sample_num + 1, n_samples), out=print_logs)
                 # samples[:, :, sample_num] = self.current_adj[:, :]
                 if self.use_sparse:
