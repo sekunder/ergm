@@ -14,7 +14,7 @@ log_msg("BEGIN SCRIPT:", __file__)
 log_msg("Testing ergms with adjacency matrices")
 
 p0 = 0.1  # edge density for ER graph
-n_nodes = 6
+n_nodes = 20
 n_samples = 10000
 seed = 17289  # Not actually used at the moment
 np.random.seed(seed)
@@ -45,7 +45,7 @@ ergm_ER_start = time.time()
 # fs = [lambda g: np.sum(g) / 2]  # undirected graph has symmetric adjacency matrix!
 # fs = lambda g: np.array([np.sum(g) / 2])
 ergm_ER_model = ERGM(lambda g: np.array([np.sum(g) / 2]), [np.log(p0 / (1 - p0))], directed=False)
-ergm_ER_samples, ergm_ER_stats = ergm_ER_model.sample_gibbs(n_nodes, n_samples, print_logs=sys.stdout, g0=g0)
+ergm_ER_samples, ergm_ER_stats, ergm_ER_diagonstics = ergm_ER_model.sample_gibbs(n_nodes, n_samples, print_logs=sys.stdout, g0=g0)
 ergm_ER_end = time.time()
 
 log_msg("Elapsed time:", ergm_ER_end - ergm_ER_start, "s")
@@ -105,7 +105,7 @@ log_msg("Initial state has", np.sum(g0) // 2, "edges, expected value", m_large *
 ergm_ER_large_start = time.time()
 # fs = [lambda g: np.sum(g) / 2]  # undirected graph has symmetric adjacency matrix!
 # ergm_ER_large_model = ERGM(lambda g: np.array([np.sum(g) / 2]), [np.log(p0 / (1 - p0))], directed=False)
-ergm_ER_large_samples, _ = ergm_ER_model.sample_gibbs(n_large, n_samples, print_logs=sys.stdout, burn_in=200, n_steps=200,
+ergm_ER_large_samples, _, ergm_ER_large_diagonstics = ergm_ER_model.sample_gibbs(n_large, n_samples, print_logs=sys.stdout, burn_in=200, n_steps=200,
                                                       g0=g0)
 ergm_ER_large_end = time.time()
 
@@ -126,7 +126,7 @@ log_msg("{:10.2f}{:10.2f}{:10.2f}".format(nx_ER_large_avg, ergm_ER_large_avg, th
 
 log_msg("Further sampling from ergm with", n_large, "nodes should skip burn-in phase")
 n_further = 1000
-ergm_further_samples, _ = ergm_ER_model.sample_gibbs(n_large, n_further, print_logs=sys.stdout, burn_in=200, n_steps=200)
+ergm_further_samples, _, ergm_further_samples_diagnostics = ergm_ER_model.sample_gibbs(n_large, n_further, print_logs=sys.stdout, burn_in=200, n_steps=200)
 avg_edges = ergm_further_samples.sum() / (2 * n_further)
 log_msg("Produced", n_further, "samples, with ", avg_edges, "average # edges")
 
